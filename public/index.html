@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#202722">
+  <meta name="theme-color" content="#f7f3eb">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('workshop-theme')==='dark'?'dark':'light';}catch{}</script>
   <title>Plague Tale GO · Workshop</title>
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -10,35 +11,64 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Plague Tale GO home"><span class="brand-icon" id="brand-icon"></span><span>PLAGUE TALE <b>GO</b><small>THE ATOMIC PARAMETERS WORKSHOP</small></span></a>
     <div class="project-label"><span class="tiny-dot"></span> Untitled workshop <span class="separator">/</span> <span id="save-state">Connecting…</span></div>
-    <div class="header-actions"><button id="guide-btn" class="subtle">? <span>Field guide</span></button><button id="files-btn" class="subtle">↥ <span>Project</span></button><button id="share-btn" class="share-btn"><span class="live-dot"></span> Share workshop <span id="peer-count">1</span></button></div>
+    <div class="presence-bar"><div id="participants" class="participants" role="group" aria-label="People in this room"></div><button id="cursor-toggle" class="subtle" aria-pressed="true">↖ Hide cursors</button></div><div class="header-actions"><button id="theme-toggle" class="subtle" aria-label="Switch to dark mode">☾ <span>Dark mode</span></button><button id="guide-btn" class="subtle">? <span>Field guide</span></button><button id="files-btn" class="subtle">↥ <span>Project</span></button><button id="share-btn" class="share-btn"><span class="live-dot"></span> Share workshop <span id="peer-count">1</span></button></div>
   </header>
+  <button id="workshop-strip-toggle" aria-controls="workshop-progress" aria-expanded="true" aria-label="Collapse workshop step strip" title="Collapse workshop steps">⌃</button>
+  <nav id="workshop-progress" class="workshop-progress" aria-label="Workshop steps and shared timer">
+    <span class="workshop-progress-label">✧ <span>OUR WORKSHOP</span></span>
+    <button id="workshop-previous" class="workshop-step-arrow" aria-label="Previous workshop step" title="Previous step" disabled>‹</button>
+    <button id="workshop-step-open" class="workshop-step-open" aria-haspopup="dialog" aria-controls="workshop-step-dialog">
+      <span class="workshop-step-prefix">STEP <b id="workshop-step-number">01</b></span>
+      <span id="workshop-step-title">A shared starting point</span><span class="workshop-step-hint" aria-hidden="true">A little reminder ↗</span>
+    </button>
+    <button id="workshop-next" class="workshop-step-arrow" aria-label="Next workshop step" title="Next step" disabled>›</button>
+    <span class="workshop-timer-group"><button id="workshop-timer" class="workshop-timer" disabled><span id="workshop-timer-icon" aria-hidden="true">▷</span><span id="workshop-time" role="timer" aria-live="off">08:00</span><span id="workshop-timer-action">Connecting</span></button><button id="workshop-timer-reset" class="workshop-timer-reset" aria-label="Reset this step’s timer for everyone" title="Reset timer" disabled>↺</button></span>
+    <span id="workshop-announcement" class="visually-hidden" role="status" aria-live="polite"></span>
+  </nav>
   <main class="workspace">
     <section class="editor">
       <div class="editor-heading"><div><div class="eyebrow">THE LEVEL EDITOR</div><h1 id="level-title">The quiet courtyard</h1><p>Build a place. Give its pieces meaning.</p></div><div class="mode-switch"><button class="active" id="edit-mode">✎ Edit</button><button id="play-mode">▷ Playtest</button></div></div>
       <div class="level-bar"><div id="level-tabs" class="level-tabs"></div><button id="add-level" title="Create a level" aria-label="Create a level">＋</button><button id="level-settings" class="level-settings" title="Level settings">⚙ <span>Level settings</span></button></div>
+      <div class="workshop-toolbar" aria-label="Notes and design cards">
+        <div class="annotation-tools"><button id="post-it-tool" aria-pressed="false" title="Add a post-it · P">▧ <span>Post-it</span></button><div id="post-it-colors" role="group" aria-label="Post-it color"></div></div>
+        <div class="deck-tools"><button data-deck="experiments"></button><button data-deck="challenges"></button></div>
+      </div>
       <div class="canvas-wrap" id="canvas-wrap">
         <div class="canvas-grain"></div>
-        <div class="canvas-top"><span id="mode-label"><span class="tiny-dot"></span> EDITING CANVAS</span><span id="dimensions">14 × 11 GRID</span></div>
+        <div class="canvas-top"><span id="mode-label"><span class="tiny-dot"></span> EDITING CANVAS</span><button id="snap-to-nodes" aria-pressed="false" title="Restrict object placement and movement to existing nodes, including in playtest">Snap to Nodes</button><span id="dimensions">14 × 11 GRID</span></div>
         <div class="tools" id="tools" aria-label="Level tools"></div>
         <div class="board-viewport" id="board-viewport"><div id="board" class="board" role="grid" aria-label="Level grid"></div></div>
         <div class="canvas-caption"><span class="caption-star">✧</span><span id="canvas-hint">An empty stage for your ideas.<br><b>Start with a token, or shape the ground.</b></span></div>
         <div class="zoom-control"><button id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-label">100%</span><button id="zoom-in" aria-label="Zoom in">＋</button><button id="zoom-fit" title="Fit to canvas">⌗</button></div>
-        <div id="play-banner" hidden>MANUAL PLAYTEST <span>Move any piece. You decide the rules.</span><button id="reset-play">↺ Reset</button></div>
+        <div id="play-banner" hidden>MANUAL PLAYTEST <span>Pieces are private. Notes & cards are saved.</span><button id="reset-play">↺ Reset</button></div>
       </div>
-      <footer class="editor-footer"><span><kbd>R</kbd> Rotate <span class="footer-divider">·</span> <kbd>Del</kbd> Remove <span class="footer-divider">·</span> <kbd>Esc</kbd> Deselect</span><div><button id="undo" title="Undo (Ctrl+Z)">↶</button><button id="redo" title="Redo (Ctrl+Y)">↷</button><span id="token-count">0 tokens placed</span></div></footer>
+      <footer class="editor-footer"><span><kbd>Ctrl+C/V</kbd> Copy/paste <span class="footer-divider">·</span> <kbd>R</kbd> Rotate <span class="footer-divider">·</span> <kbd>Del</kbd> Remove <span class="footer-divider">·</span> <kbd>Esc</kbd> Deselect</span><div><button id="undo" title="Undo (Ctrl+Z)">↶</button><button id="redo" title="Redo (Ctrl+Y)">↷</button><span id="token-count">0 tokens placed</span></div></footer>
     </section>
-    <aside class="sidebar">
-      <div class="library-heading"><div><div class="eyebrow">YOUR BUILDING BLOCKS</div><h2>Token library <span id="asset-count">0</span></h2></div><button id="create-token" class="square-primary" aria-label="Create token">＋</button></div>
+    <aside class="sidebar" id="workshop-sidebar">
+      <div class="library-heading"><div><div class="eyebrow">YOUR BUILDING BLOCKS</div><h2>Workshop library <span id="asset-count">0</span></h2></div><button id="create-token" class="square-primary" aria-label="Create token">＋</button></div>
+      <div id="library-tabs" class="library-tabs" role="tablist" aria-label="Library views"></div>
       <div class="search-wrap"><span>⌕</span><input id="asset-search" placeholder="Find a token or tag…" aria-label="Find a token or tag"><kbd>/</kbd></div>
-      <div class="library-body" id="library"></div>
-      <div class="library-tip"><span>↳</span> Drag a token onto another to nest it.<br>Small pieces. Interesting possibilities.</div>
+      <div class="library-body" id="library" role="tabpanel"></div>
+      <div class="library-tip"><span>↳</span> Drag tokens or parameters onto a token to nest.<br>Drag a tag onto a token to attach it.</div>
       <section id="inspector" class="inspector"></section>
       <div class="sidebar-footer"><span class="tiny-dot"></span> A sandbox for game designers <span>✧</span></div>
     </aside>
   </main>
   <div id="toast" role="status"></div>
   <dialog id="dialog"><div id="dialog-content"></div></dialog>
-  <input type="file" id="import-file" accept=".json,application/json" hidden>
+  <dialog id="workshop-step-dialog" class="workshop-step-dialog" aria-labelledby="workshop-dialog-title" aria-describedby="workshop-dialog-description">
+    <div class="step-note">
+      <div class="step-note-top"><span id="workshop-dialog-position"></span><button data-close-step aria-label="Close step details">×</button></div>
+      <div class="step-note-art" aria-hidden="true"><svg viewBox="0 0 150 85" fill="none"><path d="M20 69C37 81 108 83 130 68" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".22"/><rect x="23" y="28" width="39" height="39" rx="10" transform="rotate(-12 23 28)" fill="#edd8b3" stroke="#bb8a55" stroke-width="2"/><rect x="83" y="32" width="36" height="36" rx="10" transform="rotate(12 83 32)" fill="#c8d9c5" stroke="#789775" stroke-width="2"/><rect x="53" y="13" width="42" height="42" rx="12" fill="#fff7e7" stroke="#ba8c55" stroke-width="2"/><path d="M67 34h14m-7-7v14M122 16v10m-5-5h10M16 15v6m-3-3h6" stroke="#ba8c55" stroke-width="2.5" stroke-linecap="round"/><circle cx="108" cy="7" r="2" fill="#87a384"/></svg></div>
+      <div class="step-note-meta"><span id="workshop-dialog-chapter"></span><span aria-hidden="true">·</span><span id="workshop-dialog-duration"></span></div>
+      <h2 id="workshop-dialog-title"></h2>
+      <p id="workshop-dialog-description"></p>
+      <ul id="workshop-dialog-tasks"></ul>
+      <div class="step-note-outcome"><span aria-hidden="true">✧</span><div><strong>What we’re aiming for</strong><p id="workshop-dialog-outcome"></p></div></div>
+      <button class="step-note-close" data-close-step>Back to the workbench <span aria-hidden="true">↗</span></button>
+    </div>
+  </dialog>
+  <dialog id="welcome-dialog" aria-label="Welcome to the workshop"></dialog><div id="live-cursors" aria-hidden="true"></div><input type="file" id="import-file" accept=".json,application/json" hidden>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

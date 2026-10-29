@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design Card Studio · Plague Tale GO</title><link rel="stylesheet" href="/style.css"></head>
+<body class="card-studio">
+  <header class="studio-header"><div><div class="eyebrow">THE WORKSHOP COLLECTION</div><h1>Design Card Studio</h1><p>Review the prompts. Shape the next experiment.</p></div><span class="studio-badge">REPOSITORY INVENTORIES</span></header>
+  <main class="studio-main">
+    <div class="studio-intro"><p>These two inventories belong to the app and are shared by every room. Editing a card updates future draws; cards already drawn keep their original text.</p><p id="studio-access"></p></div>
+    <nav id="studio-decks" aria-label="Card decks"></nav>
+    <div class="studio-actions"><span id="studio-source"></span><button id="studio-reload">Reload inventories</button><button id="studio-save" class="primary" disabled>Save inventory</button></div>
+    <p id="studio-status" role="status">Loading inventories…</p>
+    <div class="studio-layout"><aside><div class="studio-list-heading"><h2>Cards <span id="studio-count"></span></h2><button id="studio-add" disabled>＋ Add card</button></div><div id="studio-list"></div></aside><section id="studio-detail" aria-label="Card editor and preview"></section></div>
+  </main>
+  <script type="module" src="/card-editor.js"></script>
+</body></html>

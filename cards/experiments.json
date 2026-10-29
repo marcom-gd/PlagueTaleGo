@@ -1,0 +1,79 @@
+{
+  "id": "experiments",
+  "name": "Design Experiments",
+  "description": "Make a prediction, change something deliberately, and learn from a playtest.",
+  "cards": [
+    {
+      "id": "change-one-thing",
+      "title": "Change one thing",
+      "task": "Choose one measurable parameter. Play the baseline and write down what you expect. Keep everything else fixed, test a new value, and compare the two versions.",
+      "reflection": "What changed for the player? Did the result match your prediction?"
+    },
+    {
+      "id": "find-the-boundary",
+      "title": "Find the tipping point",
+      "task": "Change one parameter in small steps until a previously successful strategy stops working. Record the last working value and the first failing value.",
+      "reflection": "What caused the strategy to break? Could another player still succeed?"
+    },
+    {
+      "id": "test-the-extremes",
+      "title": "Go to the extremes",
+      "task": "Give one parameter its smallest and largest meaningful values. Play both versions before choosing an intermediate value.",
+      "reflection": "When does this parameter stop creating a challenge, and when does it block progress?"
+    },
+    {
+      "id": "predict-before-playing",
+      "title": "Prediction duel",
+      "task": "Show two versions of the same encounter to a partner. Each person predicts which is harder and names the player skill being challenged. Test both.",
+      "reflection": "Where did your predictions disagree, and what evidence helped resolve it?"
+    },
+    {
+      "id": "remove-an-ingredient",
+      "title": "What is doing the work?",
+      "task": "Remove one ingredient from an encounter, keeping the rest unchanged. Play before and after the removal.",
+      "reflection": "Which decision or challenge disappeared? Was the ingredient essential?"
+    },
+    {
+      "id": "double-or-half",
+      "title": "Double it. Halve it.",
+      "task": "Choose a numeric parameter such as light radius or a resource allowance. Test roughly double and half its starting value, within meaningful limits.",
+      "reflection": "Did twice the value mean twice the challenge? Why might the relationship be uneven?"
+    },
+    {
+      "id": "silent-observer",
+      "title": "Stay silent",
+      "task": "Let a new player try your scenario without explanations. Record one hesitation, one unexpected action, and one correctly understood rule on post-its.",
+      "reflection": "What did the player infer from the design, and what required explanation?"
+    },
+    {
+      "id": "compare-two-skills",
+      "title": "Name the skill",
+      "task": "Choose one encounter and name the player skill you intend to test. Change one parameter to increase that demand. Ask a tester which skill they actually used.",
+      "reflection": "Did you test the intended skill, or did the player solve the problem another way?"
+    },
+    {
+      "id": "reverse-the-help",
+      "title": "Help or hazard?",
+      "task": "Choose one spatial parameter. Test a larger range on a helpful ingredient, then on a threatening ingredient. Keep a separate baseline for each test.",
+      "reflection": "Why can the same direction of change make one situation easier and another harder?"
+    },
+    {
+      "id": "repeat-the-test",
+      "title": "Try it twice",
+      "task": "Have the same player repeat an unchanged scenario. Record retries and their perceived difficulty after each attempt.",
+      "reflection": "What improved through learning even though no parameter changed?"
+    },
+    {
+      "id": "hide-the-fiction",
+      "title": "Strip away the story",
+      "task": "Recreate a small encounter with abstract markers and the same rules. Ask another group to explain its decisions before revealing the original fiction.",
+      "reflection": "Which parts of the challenge came from the system, and which clues came from its presentation?"
+    },
+    {
+      "id": "test-a-combination",
+      "title": "One plus one",
+      "task": "Test ingredient A alone, ingredient B alone, then both together. Keep their individual values unchanged and note the available strategies in each case.",
+      "reflection": "Did the combination create a new decision or simply more of the same demand?"
+    }
+  ]
+}

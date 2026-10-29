@@ -3,25 +3,62 @@ import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
+import { createHash, timingSafeEqual, randomInt } from 'node:crypto';
 import { newProject, applyAction, validateProject } from './public/model.js';
+import { createPresence } from './presence.mjs';
+import { deckIds, validateDeck } from './public/cards-catalog.js';
+import { initialWorkshop, validateWorkshop, updateWorkshop } from './public/workshop-programme.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-export async function createWorkshopServer({ dataDir = path.join(root, 'data') } = {}) {
+export async function createWorkshopServer({ dataDir = path.join(root, 'data'), cardsDir = path.join(root, 'cards'), online = null } = {}) {
   await mkdir(dataDir, { recursive: true });
   const rooms = new Map();
+  const readDeck = async id => {
+    if(!deckIds.includes(id))throw Error('Unknown card deck.');
+    return validateDeck(JSON.parse(await readFile(path.join(cardsDir, `${id}.json`), 'utf8')), id);
+  };
+  let catalogQueue=Promise.resolve();
   async function getRoom(name) {
     if (!rooms.has(name)) rooms.set(name, (async () => {
-      let saved; try { saved = JSON.parse(await readFile(path.join(dataDir, name + '.json'), 'utf8')); validateProject(saved.project); } catch { saved = { project: newProject(), revision: 0 }; }
-      return { ...saved, clients: new Set(), queue: Promise.resolve(), recent: new Map() };
+      let saved; try { saved = JSON.parse(await readFile(path.join(dataDir, name + '.json'), 'utf8')); saved.project = validateProject(saved.project); } catch { saved = { project: newProject(), revision: 0 }; }
+      try { saved.workshop = validateWorkshop(saved.workshop); } catch { saved.workshop = initialWorkshop(); }
+      try { saved.workshop = validateWorkshop(JSON.parse(await readFile(path.join(dataDir, name + '.workshop.json'), 'utf8'))); } catch {}
+      return { ...saved, clients: new Set(), queue: Promise.resolve(), workshopQueue: Promise.resolve(), recent: new Map(), presence: createPresence() };
     })());
     return rooms.get(name);
   }
   const broadcast = (r, payload) => { for (const client of r.clients) client.write(`data: ${JSON.stringify(payload)}\n\n`); };
+  const workshopPayload = room => ({ workshop: room.workshop, serverNow: Date.now() });
   const server = http.createServer(async (req, res) => {
+    if (online) {
+      const expected = Buffer.from(`workshop:${online.password}`).toString('base64');
+      const hash = value => createHash('sha256').update(value).digest();
+      if (!online.password || !timingSafeEqual(hash(req.headers.authorization || ''), hash(`Basic ${expected}`))) {
+        res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Workshop", charset="UTF-8"', 'Cache-Control': 'no-store' });
+        return res.end('Enter the workshop username and session password supplied by your host.');
+      }
+    }
     const url = new URL(req.url, 'http://localhost');
     const json = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
     try {
+      if(url.pathname==='/api/decks' && req.method==='GET')return json(200,{decks:await Promise.all(deckIds.map(readDeck)),canEdit:!online && ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)});
+      if(url.pathname.startsWith('/api/decks/') && req.method==='PUT'){
+        if(online || !['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress))return json(403,{error:'Edit the repository card inventories from localhost on the host computer.'});
+        if(req.headers.origin && ![`http://${req.headers.host}`,`https://${req.headers.host}`].includes(req.headers.origin))return json(403,{error:'Origin does not match this server.'});
+        const id=url.pathname.split('/')[3];if(!deckIds.includes(id))return json(404,{error:'Unknown card deck.'});
+        let body='';for await(const chunk of req){body+=chunk;if(body.length>1_000_000)return json(413,{error:'Card inventory is too large.'});}
+        const {deck,original}=JSON.parse(body);validateDeck(deck,id);
+        catalogQueue=catalogQueue.catch(()=>{}).then(async()=>{
+          const current=await readDeck(id);
+          if(JSON.stringify(current)!==JSON.stringify(original))return json(409,{error:'This inventory was edited elsewhere. Reload it before saving.'});
+          const target=path.join(cardsDir,`${id}.json`);
+          await writeFile(target+'.tmp',JSON.stringify(deck,null,2)+'\n');await rename(target+'.tmp',target);
+          json(200,{deck});
+        }).catch(error=>{if(!res.writableEnded)json(400,{error:error.message});});
+        return;
+      }
       if (url.pathname === '/api/config') {
+        if (online) return json(200, { urls: online.publicUrl ? [online.publicUrl] : [], transport: 'poll' });
         const port = server.address().port;
         return json(200, { urls: Object.values(os.networkInterfaces()).flat().filter(a => a.family === 'IPv4' && !a.internal).map(a => `http://${a.address}:${port}`) });
       }
@@ -29,15 +66,47 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data') }
         const [, , , name, endpoint] = url.pathname.split('/');
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name || '')) return json(400, { error: 'Invalid room name.' });
         const room = await getRoom(name.toLowerCase());
+        if (endpoint === 'workshop' && req.method === 'POST') {
+          if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
+          let body = '';
+          for await (const chunk of req) { body += chunk; if (body.length > 2048) return json(413, { error: 'Workshop command is too large.' }); }
+          const { command, expectedRevision } = JSON.parse(body);
+          room.workshopQueue = room.workshopQueue.catch(() => {}).then(async () => {
+            if (expectedRevision !== room.workshop.revision) return json(409, { ...workshopPayload(room), error: 'The workshop was just updated elsewhere. The latest step and timer are now shown.' });
+            const workshop = updateWorkshop(room.workshop, command);
+            const target = path.join(dataDir, name.toLowerCase() + '.workshop.json');
+            await writeFile(target + '.tmp', JSON.stringify(workshop)); await rename(target + '.tmp', target);
+            room.workshop = workshop;
+            const payload = workshopPayload(room);
+            broadcast(room, payload); json(200, payload);
+          }).catch(error => { if (!res.writableEnded) json(400, { error: error.message }); });
+          return;
+        }
+        if (endpoint === 'presence' && req.method === 'GET') {
+          room.presence.prune();
+          const current = room.presence.snapshot();
+          if (Number(url.searchParams.get('since')) !== current.revision || !url.searchParams.has('since')) return json(200, current);
+          const finish = value => { clearTimeout(timer); unsubscribe(); if (!res.destroyed) json(200, value); };
+          const unsubscribe = room.presence.subscribe(finish);
+          const timer = setTimeout(() => finish(room.presence.snapshot()), 15000);
+          res.on('close', () => { clearTimeout(timer); unsubscribe(); });
+          return;
+        }
+        if (endpoint === 'presence' && req.method === 'POST') {
+          if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
+          let body = '';
+          for await (const chunk of req) { body += chunk; if (body.length > 2048) return json(413, { error: 'Presence is too large.' }); }
+          return json(200, room.presence.update(JSON.parse(body)));
+        }
         if (endpoint === 'events' && req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
           room.clients.add(res);
-          res.write(`data: ${JSON.stringify({ project: room.project, revision: room.revision, peers: room.clients.size })}\n\n`);
+          res.write(`data: ${JSON.stringify({ project: room.project, revision: room.revision, peers: room.clients.size, ...workshopPayload(room) })}\n\n`);
           broadcast(room, { peers: room.clients.size });
           const keep = setInterval(() => res.write(': heartbeat\n\n'), 20000);
           req.on('close', () => { clearInterval(keep); room.clients.delete(res); broadcast(room, { peers: room.clients.size }); }); return;
         }
-        if (!endpoint && req.method === 'GET') return json(200, { project: room.project, revision: room.revision });
+        if (!endpoint && req.method === 'GET') return json(200, { ...(Number(url.searchParams.get('since')) === room.revision && url.searchParams.has('since') ? {} : { project: room.project }), revision: room.revision, ...workshopPayload(room) });
         if (endpoint === 'actions' && req.method === 'POST') {
           if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) return json(403, { error: 'Origin does not match this server.' });
           let body = ''; for await (const chunk of req) { body += chunk; if (body.length > 2_000_000) return json(413, { error: 'Project is too large.' }); }
@@ -46,9 +115,25 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data') }
           room.queue = room.queue.catch(() => {}).then(async () => {
             if (room.recent.has(actionId)) return json(200, {project:room.project,revision:room.revision,actionId});
             if (action.type === 'project.replace' && expectedRevision !== room.revision) return json(409, { error: 'Another participant changed the project. Try again after reviewing their changes.' });
-            const project = applyAction(room.project, action), revision = room.revision + 1;
+            if(action.type==='card.record')throw Error('Draw a card from its deck instead.');
+            let resolvedAction=action;
+            if(action.type==='card.claim'){
+              const deck=await readDeck(action.data.draw.deckId),card=deck.cards.find(c=>c.id===action.data.draw.cardId);
+              if(!card)throw Error('This card was removed. Refresh the inventory.');
+              if(room.project.cardDraws.some(d=>d.deckId===deck.id&&d.cardId===card.id))throw Error('Another participant just drew that card. Draw again.');
+              resolvedAction={type:'card.claim',data:{...action.data,draw:{...card,cardId:card.id,id:action.data.draw.id,deckId:deck.id}}};
+            }
+            if(action.type==='card.draw'){
+              const deck=await readDeck(action.data.deckId);
+              const used=new Set(room.project.cardDraws.filter(draw=>draw.deckId===deck.id).map(draw=>draw.cardId));
+              const remaining=deck.cards.filter(card=>!used.has(card.id));
+              if(!remaining.length)throw Error('This deck is empty. Reset it to draw again.');
+              const card=remaining[randomInt(remaining.length)];
+              resolvedAction={type:'card.record',data:{draw:{id:actionId,deckId:deck.id,cardId:card.id,title:card.title,task:card.task,reflection:card.reflection}}};
+            }
+            const project = applyAction(room.project, resolvedAction), revision = room.revision + 1;
             const target = path.join(dataDir, name + '.json');
-            await writeFile(target + '.tmp', JSON.stringify({ project, revision })); await rename(target + '.tmp', target);
+            await writeFile(target + '.tmp', JSON.stringify({ project, revision, workshop: room.workshop })); await rename(target + '.tmp', target);
             room.project = project; room.revision = revision;
             const payload = { project, revision, actionId };
             room.recent.set(actionId, revision); if (room.recent.size > 1000) room.recent.delete(room.recent.keys().next().value);
@@ -67,6 +152,9 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data') }
       res.end(req.method === 'HEAD' ? undefined : body);
     } catch (e) { if (!res.headersSent) json(e.code === 'ENOENT' ? 404 : 400, { error: e.code === 'ENOENT' ? 'Not found.' : e.message }); else res.end(); }
   });
+  const presenceCleanup = setInterval(async () => { for (const room of rooms.values()) (await room).presence.prune(); }, 5000);
+  presenceCleanup.unref();
+  server.on('close', () => clearInterval(presenceCleanup));
   return server;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

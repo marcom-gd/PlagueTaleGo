@@ -1,0 +1,168 @@
+{
+  "Game Progression": {
+    "headers": [
+      "Level ID",
+      "Order",
+      "Level name",
+      "Level pitch",
+      "Onboarding",
+      "Difficulty intention",
+      "Target difficulty",
+      "Introduced element IDs",
+      "Overall difficulty",
+      "Peak challenge",
+      "Effective gameplay types",
+      "Gameplay types used",
+      "Challenge count",
+      "Review"
+    ],
+    "rows": 3,
+    "end": 85
+  },
+  "Challenge Patterns": {
+    "headers": [
+      "Pattern ID",
+      "Level ID",
+      "Challenge name",
+      "Challenge description",
+      "Gameplay type",
+      "Mental skills",
+      "Physical skills",
+      "Custom modifier",
+      "Level weight",
+      "Member rows",
+      "Element subtotal",
+      "Raw difficulty",
+      "Perceived difficulty",
+      "Weighted difficulty",
+      "Readiness",
+      "Playtest notes",
+      "Workshop link ID",
+      "Level row key"
+    ],
+    "rows": 7,
+    "end": 85
+  },
+  "Pattern Members": {
+    "headers": [
+      "Member ID",
+      "Pattern ID",
+      "Element ID",
+      "Placement ID (optional)",
+      "Quantity",
+      "Element difficulty",
+      "Contribution",
+      "Readiness"
+    ],
+    "rows": 18,
+    "end": 85
+  },
+  "Gameplay Elements": {
+    "headers": [
+      "Element ID",
+      "Name",
+      "Root asset ID (optional)",
+      "Assembly modifier",
+      "Atom subtotal",
+      "Element difficulty",
+      "Part rows",
+      "Origin",
+      "Readiness",
+      "Assembly notes"
+    ],
+    "rows": 7,
+    "end": 85
+  },
+  "Element Parts": {
+    "headers": [
+      "Part ID",
+      "Element ID",
+      "Atom ID",
+      "Quantity",
+      "Included",
+      "Atom modifier",
+      "Contribution",
+      "Readiness",
+      "Composition notes"
+    ],
+    "rows": 18,
+    "end": 85
+  },
+  "Atoms": {
+    "headers": [
+      "Atom ID",
+      "Kind",
+      "Name",
+      "Parent atom ID",
+      "State enabled",
+      "Rule / description",
+      "Icon",
+      "Variant",
+      "Range (cells)",
+      "Width (cells)",
+      "Rotation (degrees)",
+      "Tag IDs",
+      "Difficulty modifier",
+      "Origin",
+      "Readiness"
+    ],
+    "rows": 18,
+    "end": 85
+  },
+  "Tags": {
+    "headers": [
+      "Tag ID",
+      "Name",
+      "Rule / description",
+      "Color hex",
+      "Origin"
+    ],
+    "rows": 5,
+    "end": 85
+  },
+  "Placements": {
+    "headers": [
+      "Placement ID",
+      "Level ID",
+      "Element ID",
+      "Workshop asset ID",
+      "Element name",
+      "X (zero based)",
+      "Y (zero based)",
+      "Rotation",
+      "Placement notes",
+      "Origin",
+      "Readiness",
+      "Level row key"
+    ],
+    "rows": 17,
+    "end": 85
+  },
+  "Level Data": {
+    "headers": [
+      "Level ID",
+      "Order",
+      "Level name",
+      "Width (cells)",
+      "Height (cells)",
+      "Nodes",
+      "Floor cells",
+      "Wall cells",
+      "Painted cells",
+      "Open node edges",
+      "Blocked edges",
+      "Map area (cells)",
+      "Placed objects",
+      "Challenge count",
+      "Overall difficulty",
+      "Peak challenge",
+      "Effective gameplay types",
+      "Gameplay types used",
+      "Readiness",
+      "Snapshot",
+      "Level notes"
+    ],
+    "rows": 3,
+    "end": 85
+  }
+}

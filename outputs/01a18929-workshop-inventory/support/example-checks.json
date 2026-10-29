@@ -1,0 +1,92 @@
+{
+  "expected": {
+    "elements": {
+      "GE-PLAYER": 0.5,
+      "GE-TORCH": -0.5,
+      "GE-RATS": 2.5,
+      "GE-GUARD": 3,
+      "GE-GATE": 1.5,
+      "GE-LEVER": 0.5,
+      "GE-EXIT": 0
+    },
+    "patterns": [
+      {
+        "id": "CP01",
+        "level": "L01",
+        "raw": 3.5,
+        "score": 3.5,
+        "weight": 1,
+        "type": "Survival"
+      },
+      {
+        "id": "CP02",
+        "level": "L01",
+        "raw": 1.5,
+        "score": 1.5,
+        "weight": 1,
+        "type": "Puzzle"
+      },
+      {
+        "id": "CP03",
+        "level": "L02",
+        "raw": 4,
+        "score": 4,
+        "weight": 2,
+        "type": "Stealth"
+      },
+      {
+        "id": "CP04",
+        "level": "L02",
+        "raw": 6.5,
+        "score": 6.5,
+        "weight": 1,
+        "type": "Survival"
+      },
+      {
+        "id": "CP05",
+        "level": "L03",
+        "raw": 6,
+        "score": 6,
+        "weight": 2,
+        "type": "Puzzle"
+      },
+      {
+        "id": "CP06",
+        "level": "L03",
+        "raw": 8,
+        "score": 8,
+        "weight": 2,
+        "type": "Stealth"
+      },
+      {
+        "id": "CP07",
+        "level": "L03",
+        "raw": 4.5,
+        "score": 4.5,
+        "weight": 1,
+        "type": "Survival"
+      }
+    ],
+    "levels": [
+      {
+        "id": "L01",
+        "difficulty": 2.5,
+        "peak": 3.5,
+        "variety": 2
+      },
+      {
+        "id": "L02",
+        "difficulty": 4.833333333333333,
+        "peak": 6.5,
+        "variety": 1.8
+      },
+      {
+        "id": "L03",
+        "difficulty": 6.5,
+        "peak": 8,
+        "variety": 2.7777777777777777
+      }
+    ]
+  },
+  "errors": "{\"kind\":\"notice\",\"message\":\"Cell search matched 0 entries.\"}"
+}

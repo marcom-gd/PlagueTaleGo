@@ -1,0 +1,124 @@
+{
+  "revision": 2,
+  "scope": "Native Google Sheets updated in place. Recipe summaries, linked introductions, instance navigation and compact styling.",
+  "template": "1RivyGPq66dorbNUFZOtysroTyZrYNIz65NHr0h_UE3k",
+  "example": "1jiSypFmp0lR_N7ifpDQH-sl8gePhtW5UurrLyGAkPUs",
+  "checks": {
+    "formulaErrors": 0,
+    "renamePropagation": true,
+    "parameterPropagation": true,
+    "introductionLevelPropagation": true,
+    "recipeLinkClicked": true,
+    "testInputsRestored": true
+  },
+  "results": {
+    "levels": [
+      {
+        "id": "L01",
+        "difficulty": 2.5,
+        "peak": 3.5,
+        "variety": 2
+      },
+      {
+        "id": "L02",
+        "difficulty": 4.833333333333333,
+        "peak": 6.5,
+        "variety": 1.8
+      },
+      {
+        "id": "L03",
+        "difficulty": 6.5,
+        "peak": 8,
+        "variety": 2.7777777777777777
+      }
+    ],
+    "introNames": [
+      [
+        "L01",
+        "GE-PLAYER",
+        "Amicia",
+        "Player"
+      ],
+      [
+        "L01",
+        "GE-TORCH",
+        "Lit torch",
+        "Light source, Interactable"
+      ],
+      [
+        "L01",
+        "GE-RATS",
+        "Hunting rats",
+        "Threat"
+      ],
+      [
+        "L01",
+        "GE-EXIT",
+        "Escape point",
+        "Goal"
+      ],
+      [
+        "L02",
+        "GE-GUARD",
+        "Patrolling guard",
+        "Threat"
+      ],
+      [
+        "L03",
+        "GE-GATE",
+        "Closed gate",
+        "Interactable"
+      ],
+      [
+        "L03",
+        "GE-LEVER",
+        "Gate lever",
+        "Interactable"
+      ]
+    ],
+    "recipeNames": [
+      {
+        "id": "GE-PLAYER",
+        "name": "Amicia",
+        "tags": "Player",
+        "parameters": "One-node movement · 1 cell"
+      },
+      {
+        "id": "GE-TORCH",
+        "name": "Lit torch",
+        "tags": "Light source, Interactable",
+        "parameters": "Light radius 2 · 2 cells"
+      },
+      {
+        "id": "GE-RATS",
+        "name": "Hunting rats",
+        "tags": "Threat",
+        "parameters": "Rat threat radius · 1 cell"
+      },
+      {
+        "id": "GE-GUARD",
+        "name": "Patrolling guard",
+        "tags": "Threat",
+        "parameters": "Sight length 3 · 3 cells"
+      },
+      {
+        "id": "GE-GATE",
+        "name": "Closed gate",
+        "tags": "Interactable",
+        "parameters": null
+      },
+      {
+        "id": "GE-LEVER",
+        "name": "Gate lever",
+        "tags": "Interactable",
+        "parameters": "Switching rule · 1 cell"
+      },
+      {
+        "id": "GE-EXIT",
+        "name": "Escape point",
+        "tags": "Goal",
+        "parameters": null
+      }
+    ]
+  }
+}

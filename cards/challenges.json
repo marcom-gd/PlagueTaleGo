@@ -1,0 +1,19 @@
+{
+  "id": "challenges",
+  "name": "Design Challenges",
+  "description": "Build within a constraint, discover a new possibility, and explain your choices.",
+  "cards": [
+    { "id": "harder-without-enemies", "title": "Harder, same cast", "task": "Make an encounter harder without adding enemies or new rules. Change existing parameter values or spatial relationships. Name the skill you are challenging.", "reflection": "What made the encounter harder, and how can a playtest check that claim?" },
+    { "id": "three-difficulties", "title": "One ingredient, three difficulties", "task": "Build easy, medium, and hard versions using one ingredient type. Keep the objective and core rules constant; explain the parameter values in each version.", "reflection": "What evidence would show a gradual progression rather than three arbitrary labels?" },
+    { "id": "teach-without-text", "title": "Teach without a speech", "task": "Build a short introduction that lets a new player discover one rule through a safe action, then demonstrate understanding in a second situation.", "reflection": "What signs and feedback make the rule understandable? Where did testers hesitate?" },
+    { "id": "two-valid-solutions", "title": "Two ways through", "task": "Create an encounter with at least two meaningfully different solutions. Make each solution involve a distinct trade-off.", "reflection": "Why would different players choose different solutions?" },
+    { "id": "tempting-detour", "title": "A tempting detour", "task": "Offer a safe route to the goal and an optional risky route with a desirable reward. Make the risk visible before the commitment.", "reflection": "Can a player make an informed choice? Is the reward worth the added risk?" },
+    { "id": "subtract-a-mechanic", "title": "Less to work with", "task": "Remove one tool or mechanic from a familiar scenario. Redesign the layout so it remains solvable and invites a different strategy.", "reflection": "What changed in the player's reasoning rather than just the number of available actions?" },
+    { "id": "combine-two-ingredients", "title": "Unexpected partners", "task": "Use two existing ingredient types to create a decision neither creates alone. Keep their individual rules unchanged.", "reflection": "What new interaction emerges from the combination?" },
+    { "id": "one-tile-matters", "title": "One tile matters", "task": "Change only one tile, path connection, or object position. Make that single change alter the best strategy.", "reflection": "Why does this location have such a large effect on the player's options?" },
+    { "id": "introduce-practice-master", "title": "Teach, practise, combine", "task": "Create three short encounters: introduce one idea safely, practise it with a stronger demand, then combine it with an already understood idea.", "reflection": "What does each encounter prepare the player to do next?" },
+    { "id": "readable-danger", "title": "Fair warning", "task": "Create a dangerous encounter whose threat is readable before the player enters it. Use facing, layout, light, or a clearly stated visual sign.", "reflection": "Can a first-time player explain the danger before experiencing failure?" },
+    { "id": "same-rules-new-story", "title": "Same rules, new world", "task": "Reskin an existing mechanic into a different fiction while preserving its rules, parameter values, and possible actions.", "reflection": "Which presentation helps the player understand the function more quickly?" },
+    { "id": "meaningful-resource", "title": "Spend it wisely", "task": "Give the player a limited resource and at least two useful ways to spend it. Make both choices viable under the stated rules.", "reflection": "What information does the player need to make this choice deliberately?" }
+  ]
+}

@@ -1,5 +1,7 @@
 data/
 node_modules/
+tools/*.exe
+tools/*.download
 
 # Local configuration and credentials
 .env

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "workshop-analysis/1",
+  "template": "https://docs.google.com/spreadsheets/d/1RivyGPq66dorbNUFZOtysroTyZrYNIz65NHr0h_UE3k/edit",
+  "example": "https://docs.google.com/spreadsheets/d/1jiSypFmp0lR_N7ifpDQH-sl8gePhtW5UurrLyGAkPUs/edit",
+  "folderId": "143ZceNUmud334QuV0UeMILI3aa3ZGwqD",
+  "verified": {
+    "localFormulaErrors": 0,
+    "nativeFormulaErrors": 0,
+    "exampleLevelDifficulty": [2.5, 4.833333333333333, 6.5],
+    "examplePeakDifficulty": [3.5, 6.5, 8],
+    "exampleEffectiveGameplayTypes": [2, 1.8, 2.7777777777777777],
+    "localRecalculation": true,
+    "nativeRecalculation": true,
+    "blankVersusZero": true,
+    "minimumMembers": true,
+    "clampBoundaries": true,
+    "newSheetOnlyAssembly": true,
+    "nativeMultiSelectSkillChips": true,
+    "workshopFixtureValidated": true
+  },
+  "scope": "Template, synthetic filled example and proposed mapping. No Workshop application export implementation."
+}
