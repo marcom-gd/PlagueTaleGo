@@ -1,0 +1,10 @@
+# Keep text consistent between computers, regardless of Git's Windows defaults.
+* text=auto
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.cmd text eol=crlf
+*.jpg binary
