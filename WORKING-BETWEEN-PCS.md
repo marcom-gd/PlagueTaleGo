@@ -2,14 +2,16 @@
 
 Git stores the project's files and history. The private GitHub repository transfers committed changes between your computers. Each PC keeps its own local folder; changes transfer when you push and pull.
 
+Repository: https://github.com/marcom-gd/PlagueTaleGo (private).
+
 ## Set up the other PC once
 
 1. Install Git and Node.js 20 or newer. Sign in to the same GitHub account when Git asks.
-2. Open this project's private GitHub repository, click **Code**, and copy the HTTPS clone URL.
+2. Make sure the destination folder `PlagueTaleGo` does not already exist in your chosen parent folder.
 3. In PowerShell, open the parent folder where you want the project, then run:
 
    ```powershell
-   git clone <paste-the-HTTPS-clone-URL-here> PlagueTaleGo
+   git clone https://github.com/marcom-gd/PlagueTaleGo.git PlagueTaleGo
    cd PlagueTaleGo
    git config pull.ff only
    ```
