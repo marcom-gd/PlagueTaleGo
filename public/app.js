@@ -5,6 +5,7 @@ import { deckIcon } from './cards-catalog.js';
 import { manipulation } from './manipulation.js';
 import { floatingCanvas } from './floating-canvas.js';
 import { initWorkshopProgress } from './workshop-progress.js';
+import { collectItems, releaseItem } from './player-inventory.js';
 const $ = s => document.querySelector(s);
 // Appearance is a device preference, independent of the shared workshop.
 function applyTheme(theme) {
@@ -24,6 +25,8 @@ const endpoint = `/api/rooms/${room}`;
 const workshopProgress = initWorkshopProgress({ endpoint, toast });
 let project = newProject(), authoritative = clone(project), revision = -1, pending = [], busy = false, connected = false, serverNeedsRestart = false;
 let levelId, selected = null, staged = null, tool = 'select', search = '', zoom = 1, play = null, playStart = null, historyStack = [], redoStack = [];
+let playStartRevision = null;
+let playerInventory=[], inventoryExpanded=false;
 let dragPayload = null, showAll = false, paint = null, toastTimer, didInitialFit = false;
 let notePending = null, noteTimer;
 let connectionStart = null, libraryTab='objects';
@@ -180,6 +183,7 @@ function render() {
   $('#level-tabs').innerHTML = (play || project).levels.map((l,i) => `<button data-level="${esc(l.id)}" class="${l.id === levelId ? 'active' : ''}"><span>${String(i+1).padStart(2,'0')}</span>${esc(l.name)}</button>`).join('');
   $('#edit-mode').classList.toggle('active',!play); $('#play-mode').classList.toggle('active',!!play);
   $('#play-banner').hidden = !play; $('#tools').hidden = !!play;
+  renderInventory();
   $('#create-token').disabled = !!play; $('#add-level').disabled = !!play; $('#level-settings').disabled = !!play;
   $('#undo').disabled = !historyStack.length || !!play; $('#redo').disabled = !redoStack.length || !!play;
   $('#mode-label').innerHTML = `<span class="tiny-dot"></span>${play ? 'MANUAL PLAYTEST' : 'EDITING CANVAS'}`;
@@ -199,6 +203,19 @@ function render() {
   document.querySelectorAll('.deck-tools [data-deck]').forEach(button=>{const id=button.dataset.deck;button.innerHTML=`${deckIcon(id)}<span>Design ${id==='experiments'?'Experiments':'Challenges'}</span>`;});
   if(tool==='postIt')$('#canvas-hint').innerHTML='Choose a color, then click the canvas.<br><b>Post-its are shared and saved, including during playtests.</b>';
   if(activeDeck && $('#dialog').open && $('#dialog').dataset.deckView===activeDeck)renderDeckDialog();
+}
+function renderInventory() {
+  const panel=$('#player-inventory');panel.hidden=!play;
+  if(!play)return;
+  panel.innerHTML=`<button id="inventory-toggle" class="inventory-header" aria-expanded="${inventoryExpanded}" aria-controls="inventory-contents" title="Player inventory · drop objects here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 6V4a4 4 0 0 1 8 0v2M6 8 3 10v9h3m12-11 3 2v9h-3"/><rect x="6" y="6" width="12" height="16" rx="3"/><rect x="8.5" y="13" width="7" height="6" rx="1.5"/><path d="M9 10h6"/></svg><span>Player inventory</span><small>${playerInventory.length}</small><span aria-hidden="true">${inventoryExpanded?'▾':'▸'}</span></button><div id="inventory-contents" ${inventoryExpanded?'':'hidden'}><p class="inventory-hint">Drop objects here from the canvas or library. Drag them back to place.</p><ul>${playerInventory.map(i=>{const a=asset(i.assetId);return `<li><div class="inventory-item" data-inventory-item="${esc(i.id)}" draggable="true" tabindex="0" role="button" aria-label="${esc(a?.name||'Object')}: drag onto canvas">${a?tokenArt(a,i):''}<span>${esc(a?.name||'Object')}</span></div><button data-discard-inventory="${esc(i.id)}" aria-label="Remove ${esc(a?.name||'object')} from inventory" title="Remove from inventory">×</button></li>`;}).join('')}</ul>${playerInventory.length?'':'<p class="inventory-empty">Your backpack is empty.</p>'}</div>`;
+}
+function collectInInventory(payload) {
+  if(!play)return;
+  try{
+    if(notePending)saveNote();
+    const result=collectItems(play,playerInventory,level().id,payload);if(!result)return;
+    play=result.project;playerInventory=result.inventory;selected=null;inventoryExpanded=true;render();
+  }catch(error){toast(error.message);}
 }
 function renderBoard() {
   const l = level(), board = $('#board');
@@ -254,7 +271,7 @@ function renderLibrary() {
   $('#create-token').setAttribute('aria-label',libraryTab==='tags'?'Create tag':libraryTab==='parameters'?'Create parameter':'Create token');
   const row=(a,depth=0)=>{
     const state=isState(a), visual=appearance(p,a), branch=p.assets.some(b=>b.parentId===a.id)||a.tags.length;
-    return `<div class="asset-row ${depth?'child':''} ${state?'state-row':''} ${state&&!a.enabled?'state-disabled':''} ${selected?.type==='asset'&&selected.id===a.id?'active':''}" data-asset="${esc(a.id)}" draggable="${!play}" style="--depth:${depth};margin-left:${Math.min(depth,8)*14}px" tabindex="0" role="button" aria-label="${esc(a.name)}, ${state?'state':isParameter(a)?'parameter':'token'}">${tree&&branch?`<button class="tree-disclosure" data-collapse-asset="${esc(a.id)}" aria-label="${collapsedAssets.has(a.id)?'Expand':'Collapse'} ${esc(a.name)}" aria-expanded="${!collapsedAssets.has(a.id)}">${collapsedAssets.has(a.id)?'▸':'▾'}</button>`:'<span class="tree-spacer"></span>'}<div class="asset-icon" style="transform:rotate(${a.rotation||0}deg)">${tokenArt(a)}</div><div class="asset-copy"><strong>${esc(a.name)}</strong><small>${state?'STATE · '+(a.enabled?'enabled':'disabled'):isParameter(a)?iconNames[a.icon]+' · '+a.range+' cells':iconVariants[visual.icon][visual.variant||defaultVariant(visual.icon)]}</small></div>${state?stateSwitch(a):`<button class="asset-place" data-rotate-asset="${esc(a.id)}" title="Rotate shared definition 90° · updates all placements" aria-label="Rotate ${esc(a.name)} 90 degrees" ${play?'disabled':''}>↻</button><button class="asset-place" data-place="${esc(a.id)}" aria-label="Place ${esc(a.name)}" ${play?'disabled':''}>＋</button>`}</div>`;
+    return `<div class="asset-row ${depth?'child':''} ${state?'state-row':''} ${state&&!a.enabled?'state-disabled':''} ${selected?.type==='asset'&&selected.id===a.id?'active':''}" data-asset="${esc(a.id)}" draggable="${!play||!isState(a)}" style="--depth:${depth};margin-left:${Math.min(depth,8)*14}px" tabindex="0" role="button" aria-label="${esc(a.name)}, ${state?'state':isParameter(a)?'parameter':'token'}">${tree&&branch?`<button class="tree-disclosure" data-collapse-asset="${esc(a.id)}" aria-label="${collapsedAssets.has(a.id)?'Expand':'Collapse'} ${esc(a.name)}" aria-expanded="${!collapsedAssets.has(a.id)}">${collapsedAssets.has(a.id)?'▸':'▾'}</button>`:'<span class="tree-spacer"></span>'}<div class="asset-icon" style="transform:rotate(${a.rotation||0}deg)">${tokenArt(a)}</div><div class="asset-copy"><strong>${esc(a.name)}</strong><small>${state?'STATE · '+(a.enabled?'enabled':'disabled'):isParameter(a)?iconNames[a.icon]+' · '+a.range+' cells':iconVariants[visual.icon][visual.variant||defaultVariant(visual.icon)]}</small></div>${state?stateSwitch(a):`<button class="asset-place" data-rotate-asset="${esc(a.id)}" title="Rotate shared definition 90° · updates all placements" aria-label="Rotate ${esc(a.name)} 90 degrees" ${play?'disabled':''}>↻</button><button class="asset-place" data-place="${esc(a.id)}" aria-label="Place ${esc(a.name)}" ${play?'disabled':''}>＋</button>`}</div>`;
   };
   const show=(a,depth=0)=>{
     if(search&&!matching(a)&&!activeDescendants(p,a.id).some(matching))return '';
@@ -503,14 +520,38 @@ function guideDialog() {
   ].map(([title,text],n)=>`<div class="help-item"><span class="help-number">0${n+1}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}</div><div class="callout">Overlays are visual rulers: area uses Manhattan (diamond) distance, Line Effect is a straight directional line; cones widen toward their far edge and rectangles keep a constant width. Library rotation updates the shared definition; placement rotation adds to it. Neither applies collisions, visibility, inventory, turns, or win conditions. Multiple tokens can share a cell; remove or move the top one to reach the others.</div><details><summary>Keyboard shortcuts</summary><p>V select · F floor · N nodes · W walls · E erase tiles · X erase connection · C reconnect · R rotate · Delete remove selected token · Esc deselect · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo · / search. Use arrow keys to move a selected piece; Enter on a focused cell activates it.</p></details><p style="margin-top:18px;font-size:10px">Original workshop sprites. An unofficial, educational fan project inspired by the GO games and A Plague Tale.</p>`,'<button data-close class="primary">Back to the workbench</button>','FIELD GUIDE'));
 }
 function filesDialog() {
-  showDialog(modal('Your workshop, to keep.',`<p>Changes save automatically on this server. Export all levels, tokens, rules, tags, post-its, and drawn-card history. Master card inventories stay in the repository.</p><div class="files-grid"><button id="export-project">↧ Export project<small>Download a readable .json file</small></button><button id="import-project">↥ Import project<small>Replace this room with a saved project</small></button><button id="example-project">✧ Load example<small>A torch, light, rats, and a guard</small></button><button id="new-project">＋ Clear workshop<small>Start again with an empty library</small></button></div><div class="callout">Room <b>${esc(room)}</b> · Editing this room changes it for every participant. Private playtest piece changes are excluded from exports; saved post-its and card history are included.</div>`));
+  showDialog(modal('Your workshop, to keep.',`<p>Changes save automatically on this server. Keep a project backup, or export a connected inventory for Excel and Google Sheets.</p><div class="files-grid"><button id="export-project">↧ Export project<small>Download a readable .json backup</small></button><button id="export-inventory">▦ Export spreadsheet<small>Recipes, challenges and progression · .xlsx</small></button><button id="import-project">↥ Import project<small>Replace this room with a saved project</small></button><button id="example-project">✧ Load example<small>A torch, light, rats, and a guard</small></button><button id="new-project">＋ Clear workshop<small>Start again with an empty library</small></button></div><div class="callout">Room <b>${esc(room)}</b> · Project backups contain the saved design. Spreadsheet exports can also capture your private playtest before you return to Edit.</div>`));
   $('#export-project').onclick=()=>{
     const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'}), url=URL.createObjectURL(blob), a=document.createElement('a');
     a.href=url;a.download=`plague-tale-go-${room}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Project exported.');
   };
   $('#import-project').onclick=()=>{if(play)return toast('Return to Edit before importing.');$('#import-file').click();};
+  $('#export-inventory').onclick=inventoryDialog;
   $('#example-project').onclick=()=>loadExample();
   $('#new-project').onclick=()=>{if(play)return toast('Return to Edit before clearing.');confirmDialog('Clear this workshop?','All levels, token definitions, and tags in this shared room will be replaced. Export a copy first if you want to keep them.','Clear workshop',()=>{dispatch({type:'project.replace',data:newProject()});selected=null;staged=null;});};
+}
+function inventoryDialog() {
+  const testing = !!play;
+  showDialog(modal('Export your design inventory.', `<p>A connected workbook with recipe summaries, every level, suggested challenge groups, and game progression. Enter difficulty modifiers and design intentions in the spreadsheet.</p><div class="field"><label for="inventory-snapshot">Snapshot to export</label><select id="inventory-snapshot"><option value="edit-design">Saved Edit design</option>${testing ? '<option value="playtest-start">Playtest starting layout</option><option value="playtest-current" selected>Current private playtest</option>' : ''}</select><small>${testing ? 'Capture the current playtest before returning to Edit. Exporting leaves the shared room unchanged.' : 'Start a playtest to also export its starting layout or current private copy.'}</small></div><div class="callout">Open the .xlsx in Excel, or upload it to Google Sheets. Each export is a new workbook. Keep your annotated copy; spreadsheet edits are not merged into later exports.</div><p id="inventory-error" role="alert" class="confirm-box" hidden></p>`, '<button id="inventory-back">Back</button><button id="download-inventory" class="primary">Download .xlsx</button>'));
+  $('#inventory-back').onclick=filesDialog;
+  $('#download-inventory').onclick=async()=>{
+    const button=$('#download-inventory'), error=$('#inventory-error'), snapshotKind=$('#inventory-snapshot').value;
+    error.hidden=true;
+    if (revision < 0 || serverNeedsRestart || (snapshotKind==='edit-design' && (!connected || pending.length || busy || notePending))) {
+      error.textContent='Wait until the saved design shows “All changes saved”, then export again.'; error.hidden=false; return;
+    }
+    const capture=snapshotKind==='playtest-current'?play:snapshotKind==='playtest-start'?playStart:null;
+    if(snapshotKind!=='edit-design' && !capture){error.textContent='This playtest has ended. Reopen the export window to choose another snapshot.';error.hidden=false;return;}
+    const request={snapshotKind,revision:snapshotKind==='edit-design'?revision:playStartRevision, ...(capture?{project:clone(capture)}:{})};
+    button.disabled=true;button.textContent='Building workbook…';$('#inventory-snapshot').disabled=true;
+    try {
+      const response=await fetch(endpoint+'/inventory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});
+      if(!response.ok){const result=await response.json().catch(()=>({}));throw Error(result.error || (response.status===404?'Restart the Workshop server, then refresh to enable spreadsheet export.':'The workbook could not be exported.'));}
+      const url=URL.createObjectURL(await response.blob()),a=document.createElement('a');
+      a.href=url;a.download=`workshop-${room}-${snapshotKind}-inventory.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Inventory exported. Open it in Excel or Google Sheets.');
+    } catch(e) { if(error.isConnected){error.textContent=e.message || 'Could not reach the Workshop server. Try again when connected.';error.hidden=false;} }
+    finally { if(button.isConnected){button.disabled=false;button.textContent='Download .xlsx';$('#inventory-snapshot').disabled=false;} }
+  };
 }
 async function shareDialog() {
   let config={urls:[]};try{config=await(await fetch('/api/config')).json();}catch{}
@@ -586,6 +627,7 @@ function connectionNode(key) {
 document.addEventListener('click', e=>{
   if(Date.now()<suppressClickUntil){e.preventDefault();return;}
   if(notePending && e.target.id!=='instance-note') saveNote();
+  const discard=e.target.closest('[data-discard-inventory]');if(discard&&play){playerInventory=playerInventory.filter(i=>i.id!==discard.dataset.discardInventory);renderInventory();return;}
   const close=e.target.closest('[data-close]');if(close)return closeDialog();
   const deck=e.target.closest('[data-deck],[data-review-deck]');if(deck)return deckDialog(deck.dataset.deck||deck.dataset.reviewDeck);
   const color=e.target.closest('[data-note-color]');if(color){postItColor=color.dataset.noteColor;staged=null;selected=null;render();return;}
@@ -621,6 +663,7 @@ document.addEventListener('click', e=>{
     if(staged)place(staged,Number(cell.dataset.x),Number(cell.dataset.y));else{selected=null;render();}return;
   }
   switch(e.target.closest('button')?.id){
+    case 'inventory-toggle':inventoryExpanded=!inventoryExpanded;renderInventory();break;
     case 'post-it-tool':toast('Drag Post-it from the floating toolbar onto the canvas.');break;
     case 'edit-post-it':if(activePostIt())postItDialog(activePostIt());break;
     case 'delete-post-it':removeSelected();break;
@@ -654,10 +697,10 @@ document.addEventListener('click', e=>{
     case 'add-level':{if(project.levels.length>=30)return toast('This workshop supports up to 30 levels.');const l=blankLevel(uid(),`Level ${project.levels.length+1}`);dispatch({type:'level.add',data:l});levelId=l.id;selected=null;staged=null;render();fitBoard();break;}
     case 'play-mode':{
       if(play)return;if(pending.length)return toast('Wait for changes to save before playtesting.');
-      playStart=clone(project);play=clone(project);staged=null;tool='select';selected=null;render();toast('Manual playtest. Drag and rotate pieces; you interpret the rules.');break;
+      playerInventory=[];inventoryExpanded=false;playStartRevision=revision;playStart=clone(project);play=clone(project);staged=null;tool='select';selected=null;render();toast('Manual playtest. Drag pieces into the backpack to collect them.');break;
     }
-    case 'edit-mode':if(play){play=null;playStart=null;selected=null;if(!project.levels.some(l=>l.id===levelId))levelId=project.levels[0].id;render();toast('Back to editing. Your original level is preserved.');}break;
-    case 'reset-play':if(play){play=clone(playStart);selected=null;render();toast('Playtest reset.');}break;
+    case 'edit-mode':if(play){playerInventory=[];play=null;playStart=null;playStartRevision=null;selected=null;if(!project.levels.some(l=>l.id===levelId))levelId=project.levels[0].id;render();toast('Back to editing. Your original level is preserved.');}break;
+    case 'reset-play':if(play){playerInventory=[];play=clone(playStart);selected=null;render();toast('Playtest reset.');}break;
   }
 });
 document.addEventListener('change',e=>{
@@ -685,22 +728,25 @@ document.addEventListener('pointerdown',e=>{
   if(e.button!==0||$('#dialog').open||e.target.closest('[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
   if(tool==='postIt'&&e.target.closest('#board'))return;
   const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),note=e.target.closest('[data-post-it]');
-  if(!note&&!piece&&(!row||play)&&(!tagRow||play))return;
+  const inventoryItem=play&&e.target.closest('[data-inventory-item]');
+  if(e.target.closest('[data-discard-inventory]'))return;
+  if(!inventoryItem&&!note&&!piece&&!row&&(!tagRow||play))return;
   e.preventDefault();
-  pointerDrag={startX:e.clientX,startY:e.clientY,active:false,payload:note?{type:'postIt',id:note.dataset.postIt,levelId:level().id}:piece?{type:'instance',id:piece.dataset.instance,levelId:level().id}:tagRow?{type:'tag',id:tagRow.dataset.tag}:{type:'asset',id:row.dataset.asset}};
+  pointerDrag={startX:e.clientX,startY:e.clientY,active:false,payload:inventoryItem?{type:'inventory',id:inventoryItem.dataset.inventoryItem}:note?{type:'postIt',id:note.dataset.postIt,levelId:level().id}:piece?{type:'instance',id:piece.dataset.instance,levelId:level().id}:tagRow?{type:'tag',id:tagRow.dataset.tag}:{type:'asset',id:row.dataset.asset}};
 });
 document.addEventListener('pointermove',e=>{
   if(!pointerDrag)return;
   if(!pointerDrag.active&&Math.hypot(e.clientX-pointerDrag.startX,e.clientY-pointerDrag.startY)>5){
     pointerDrag.active=true;
-    const a=pointerDrag.payload.type==='tag'?tag(pointerDrag.payload.id):pointerDrag.payload.type==='asset'?asset(pointerDrag.payload.id):asset(level().instances.find(i=>i.id===pointerDrag.payload.id)?.assetId);
+    const a=pointerDrag.payload.type==='tag'?tag(pointerDrag.payload.id):pointerDrag.payload.type==='asset'?asset(pointerDrag.payload.id):asset((pointerDrag.payload.type==='inventory'?playerInventory:level().instances).find(i=>i.id===pointerDrag.payload.id)?.assetId);
     const ghost=document.createElement('div');ghost.id='drag-ghost';ghost.innerHTML=`${pointerDrag.payload.type==='postIt'?'▧':pointerDrag.payload.type==='tag'?'#':a?tokenArt(a):sprite('rock')}<span>${pointerDrag.payload.type==='postIt'?'Post-it':esc(a?.name)}</span>`;document.body.append(ghost);
   }
   if(!pointerDrag.active)return;
   const ghost=$('#drag-ghost');ghost.style.left=`${e.clientX+14}px`;ghost.style.top=`${e.clientY+14}px`;
   document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));
   const target=document.elementFromPoint(e.clientX,e.clientY),cell=target?.closest('.cell'),row=target?.closest('[data-asset]'),root=target?.closest('[data-root-drop]');
-  if(cell&&pointerDrag.payload.type!=='tag')cell.classList.add('drop-target');else if(!play)(pointerDrag.payload.type==='tag'?row:row||root)?.classList.add('nest-hover');
+  if(play&&target?.closest('#player-inventory')&&['asset','instance'].includes(pointerDrag.payload.type))$('#player-inventory').classList.add('drop-target');
+  else if(cell&&pointerDrag.payload.type!=='tag'&&(!play||pointerDrag.payload.type!=='asset'))cell.classList.add('drop-target');else if(!play)(pointerDrag.payload.type==='tag'?row:row||root)?.classList.add('nest-hover');
 });
 document.addEventListener('pointerup',e=>{
   if(!pointerDrag)return;
@@ -712,19 +758,22 @@ document.addEventListener('pointercancel',()=>{pointerDrag=null;$('#drag-ghost')
 document.addEventListener('dragstart',e=>{
   if(pointerDrag){e.preventDefault();return;}
   const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]');
-  if(piece)dragPayload={type:'instance',id:piece.dataset.instance,levelId:level().id};
+  const inventoryItem=play&&e.target.closest('[data-inventory-item]');
+  if(inventoryItem)dragPayload={type:'inventory',id:inventoryItem.dataset.inventoryItem};
+  else if(piece)dragPayload={type:'instance',id:piece.dataset.instance,levelId:level().id};
   else if(tagRow&&!play)dragPayload={type:'tag',id:tagRow.dataset.tag};
-  else if(row&&!play)dragPayload={type:'asset',id:row.dataset.asset};
+  else if(row)dragPayload={type:'asset',id:row.dataset.asset};
   else {e.preventDefault();return;}
   e.dataTransfer.setData('application/x-plague-token',JSON.stringify(dragPayload));e.dataTransfer.setData('text/plain',dragPayload.id);e.dataTransfer.effectAllowed=dragPayload.type==='asset'?'copyMove':'move';
 });
 document.addEventListener('dragover',e=>{
   if(!dragPayload)return;
   const cell=e.target.closest('.cell'),row=e.target.closest('[data-asset]'),root=e.target.closest('[data-root-drop]'),piece=e.target.closest('[data-instance]');
-  const valid=dragPayload.type==='tag'?!play&&(row||piece):cell||piece||(dragPayload.type==='asset'&&!play&&(row||root));
-  if(valid){e.preventDefault();e.dataTransfer.dropEffect=cell||piece?(dragPayload.type==='asset'?'copy':'move'):'move';}
+  const inventoryTarget=play&&e.target.closest('#player-inventory')&&['asset','instance'].includes(dragPayload.type);
+  const valid=inventoryTarget||(dragPayload.type==='tag'?!play&&(row||piece):((!play||dragPayload.type!=='asset')&&(cell||piece))||(dragPayload.type==='asset'&&!play&&(row||root)));
+  if(valid){e.preventDefault();e.dataTransfer.dropEffect=dragPayload.type==='asset'&&(inventoryTarget||cell||piece)?'copy':'move';}
   document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));
-  if(cell)cell.classList.add('drop-target');else if(row&&dragPayload.type==='asset'&&!play)row.classList.add('nest-hover');else if(root)root.classList.add('nest-hover');
+  if(inventoryTarget)$('#player-inventory').classList.add('drop-target');else if(valid&&cell)cell.classList.add('drop-target');else if(row&&dragPayload.type==='asset'&&!play)row.classList.add('nest-hover');else if(root)root.classList.add('nest-hover');
 });
 document.addEventListener('drop',e=>{
   if(!dragPayload)return;e.preventDefault();const payload=dragPayload;dragPayload=null;
@@ -733,6 +782,7 @@ document.addEventListener('drop',e=>{
 });
 function dropToken(target,payload){
   if(!target)return;
+  if(play&&target.closest('#player-inventory')){collectInInventory(payload);return;}
   if(payload.type==='postIt'){
     const pos=cursorCell();if(pos&&target.closest('#board')&&payload.levelId===level().id){selected={type:'postIt',id:payload.id};dispatch({type:'postIt.update',data:{levelId:payload.levelId,id:payload.id,...pos}});}return;
   }
@@ -746,6 +796,9 @@ function dropToken(target,payload){
   const cell=target.closest('.cell'),piece=target.closest('[data-instance]');
   if(cell||piece){
     const target=cell?{x:Number(cell.dataset.x),y:Number(cell.dataset.y)}:level().instances.find(i=>i.id===piece.dataset.instance);
+    if(payload.type==='inventory'&&play){
+      try{const result=releaseItem(play,playerInventory,level().id,payload.id,{x:target.x,y:target.y},snapToNodes);play=result.project;playerInventory=result.inventory;selected={type:'instance',id:payload.id};render();}catch(error){toast(error.message);}return;
+    }
     if(payload.type==='asset'&&!play)place(payload.id,target.x,target.y);
     if(payload.type==='instance'&&payload.levelId===level().id){selected={type:'instance',id:payload.id};dispatch({type:'instance.update',data:{levelId:level().id,id:payload.id,x:target.x,y:target.y}});}return;
   }
@@ -805,7 +858,7 @@ document.addEventListener('keydown',e=>{
 $('#dialog').addEventListener('click',e=>{if(e.target===$('#dialog')){const r=$('#dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
 window.addEventListener('beforeunload',e=>{if(pending.length||notePending){e.preventDefault();e.returnValue='';}});
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(fitBoard,200);});
-editingTools=manipulation({getProject:currentProject,getLevel:level,getSelected:()=>selected,setSelected:value=>{selected=value;staged=null;tool='select';},dispatch,render,toast,isPlay:()=>!!play,snap:()=>snapToNodes,esc});
+editingTools=manipulation({getProject:currentProject,getLevel:level,getSelected:()=>selected,setSelected:value=>{selected=value;staged=null;tool='select';},dispatch,render,toast,isPlay:()=>!!play,snap:()=>snapToNodes,esc,collectInventory:collectInInventory});
 floatingTools=floatingCanvas({getProject:()=>project,getLevel:level,dispatch,edit:postItDialog,uid,esc});
 render();
 

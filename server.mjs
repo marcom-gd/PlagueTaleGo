@@ -8,6 +8,7 @@ import { newProject, applyAction, validateProject } from './public/model.js';
 import { createPresence } from './presence.mjs';
 import { deckIds, validateDeck } from './public/cards-catalog.js';
 import { initialWorkshop, validateWorkshop, updateWorkshop } from './public/workshop-programme.js';
+import { exportInventory, snapshotKinds } from './inventory-export.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 export async function createWorkshopServer({ dataDir = path.join(root, 'data'), cardsDir = path.join(root, 'cards'), online = null } = {}) {
@@ -66,6 +67,27 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
         const [, , , name, endpoint] = url.pathname.split('/');
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name || '')) return json(400, { error: 'Invalid room name.' });
         const room = await getRoom(name.toLowerCase());
+        if (endpoint === 'inventory' && req.method === 'POST') {
+          if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
+          const chunks = []; let bytes = 0;
+          for await (const chunk of req) {
+            bytes += chunk.length;
+            if (bytes > 16_000_000) return json(413, { error: 'This snapshot is too large to export (16 MB maximum).' });
+            chunks.push(chunk);
+          }
+          const request = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          if (!snapshotKinds.includes(request.snapshotKind)) return json(400, { error: 'Choose a supported inventory snapshot.' });
+          if (!Number.isSafeInteger(request.revision) || request.revision < 0) return json(400, { error: 'Invalid source revision.' });
+          const saved = request.snapshotKind === 'edit-design';
+          if (saved && request.revision !== room.revision) return json(409, { error: 'The room changed before export. Review the latest saved design and export again.' });
+          const workbook = exportInventory(saved ? room.project : request.project, { snapshotKind: request.snapshotKind, revision: request.revision, room: name.toLowerCase() });
+          res.writeHead(200, {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="workshop-${name.toLowerCase()}-${request.snapshotKind}-inventory.xlsx"`,
+            'Content-Length': workbook.length, 'Cache-Control': 'no-store'
+          });
+          return res.end(workbook);
+        }
         if (endpoint === 'workshop' && req.method === 'POST') {
           if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
           let body = '';

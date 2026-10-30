@@ -31,6 +31,10 @@ export const iconVariants = {
   cat:{sitting:'Sitting',prowling:'Prowling'},sling:{loaded:'Loaded',empty:'Empty'},dog:{standing:'Standing',sitting:'Sitting'},crow:{perched:'Perched',flying:'Flying'},lantern:{on:'Lit',off:'Unlit'},chest:{closed:'Closed',open:'Open'},barrel:{intact:'Intact',broken:'Broken'},crate:{intact:'Intact',broken:'Broken'},rope:{coiled:'Coiled',hanging:'Hanging'},ladder:{intact:'Intact',broken:'Broken'},trap:{armed:'Armed',sprung:'Sprung'},bell:{idle:'Idle',ringing:'Ringing'},
   square:{filled:'Filled',outline:'Outline'},triangle:{filled:'Filled',outline:'Outline'},hexagon:{filled:'Filled',outline:'Outline'},circle:{filled:'Filled',outline:'Outline'},diamond:{filled:'Filled',outline:'Outline'}
 };
+iconNames.chickenThigh = 'Chicken thigh';
+iconNames.brazier = 'Brazier';
+iconVariants.chickenThigh = { default:'Default' };
+iconVariants.brazier = { on:'Lit',off:'Unlit' };
 export const defaultVariant = name => Object.keys(iconVariants[name] || {default:'Default'})[0];
 function variantPixels(name, variant) {
   let pixels=(Object.hasOwn(sprites,name) ? sprites[name] : sprites.rock).map(row=>[...row]);

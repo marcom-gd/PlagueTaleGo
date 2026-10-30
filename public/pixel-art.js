@@ -39,6 +39,23 @@ export function detailedPixels(name,variant,color,base) {
   } else if(name==='crow') {
     if(variant==='flying'){poly([[15,14],[3,5],[1,13],[12,22],[20,22],[31,12],[29,4],[18,14]],ink);line(4,10,13,18,'#637b9c',2);line(19,18,28,9,steel,2);}
     oval(16,19,6,7,ink);oval(16,19,4,5,'#4f586e');oval(13,10,5,5,ink);rect(11,9,1,1,shine);poly([[8,10],[2,13],[9,14]],gold);line(15,25,13,28,wood,2);line(19,25,21,28,wood,2);line(9,29,25,29,wood,2);
+  } else if(name==='chickenThigh') {
+    // Roasted drumstick with a pale, forked bone handle.
+    line(17,17,26,26,ink,5);line(18,18,26,26,'#ead8b5',3);
+    oval(25,28,3,3,ink);oval(29,25,3,3,ink);oval(25,28,2,2,'#fff0d0');oval(29,25,2,2,'#fff0d0');
+    poly([[4,7],[9,3],[17,4],[23,10],[22,17],[17,23],[10,22],[4,17],[2,12]],ink);
+    poly([[5,8],[10,5],[16,6],[21,11],[20,16],[16,21],[11,20],[6,16],[4,12]],'#a85432');
+    oval(11,11,6,5,'#cf8045');line(7,9,11,7,'#f0b56a',2);line(15,17,18,13,'#783d2b',2);rect(9,16,2,2,'#e8a25b');
+  } else if(name==='brazier') {
+    // Raised iron fire bowl, with burning and cold-coal states.
+    line(10,22,6,30,ink,3);line(21,22,25,30,ink,3);line(15,23,15,30,ink,3);
+    line(10,23,7,29,steel);line(21,23,24,29,steel);line(16,24,16,29,steel);
+    if(variant==='on'){flame(12,7);flame(20,6);flame(16,4);}
+    poly([[3,16],[29,16],[26,23],[21,26],[11,26],[6,23]],ink);
+    poly([[5,18],[27,18],[24,22],[20,24],[12,24],[8,22]],steel);
+    oval(16,17,12,3,ink);oval(16,17,9,2,variant==='on'?'#c9603d':'#56606a');
+    for(const x of [10,15,20])rect(x,16,3,2,variant==='on'?gold:ink);
+    line(8,21,12,23,shine);rect(19,21,5,1,shine);
   } else if(name==='lantern') {
     oval(16,7,5,5,ink);oval(16,7,3,3,null);box(7,9,18,19,wood);rect(10,12,12,12,variant==='on'?gold:'#586777');if(variant==='on')flame(16,14);rect(8,12,2,13,ink);rect(22,12,2,13,ink);rect(15,11,2,14,wood);box(6,26,20,4,steel);
   } else if(name==='sling') {
