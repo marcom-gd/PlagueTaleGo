@@ -17,6 +17,18 @@ test('cone reaches configured far width and rectangle keeps exact odd and even w
   for(const width of [1,2,5,12])for(let y=1;y<=4;y++)assert.equal(row(effect('rectangle',{width}),y).length,width);
   assert.ok(effectContains(effect('area'),0,0));assert.ok(!effectContains(effect('area'),3,2));
 });
+
+test('cross includes its center and four one-cell-wide arms with exact range at every rotation',()=>{
+  for(let range=1;range<=12;range++)for(const rotation of [0,90,180,270]){
+    const a=effect('cross',{range});let count=0;
+    for(let y=-13;y<=13;y++)for(let x=-13;x<=13;x++){
+      const expected=(x===0&&Math.abs(y)<=range)||(y===0&&Math.abs(x)<=range);
+      assert.equal(effectContains(a,x,y,rotation),expected,`${x},${y}, range ${range}, rotation ${rotation}`);
+      if(expected)count++;
+    }
+    assert.equal(count,4*range+1);
+  }
+});
 test('shared definition rotation persists, composes once with nested effects and leaves placement rotation independent',()=>{
   let p=newProject(); const root=effect('torch',{rotation:90}), child=effect('cone',{rotation:270,parentId:root.id});p.assets=[root,child];
   p.levels[0].instances=[{id:'placed',assetId:root.id,x:2,y:2,rotation:90}];
@@ -43,7 +55,7 @@ test('cones stay mirror symmetric at every depth, width, length and direction, i
 });
 import {parameterOverlay, wallBlocks} from '../public/model.js';
 test('walls occlude all parameter shapes and block diagonal corner leaks',()=>{
-  for(const icon of ['area','sight','cone','rectangle']){
+  for(const icon of ['area','sight','cone','rectangle','cross']){
     const p=newProject(),a=effect(icon,{occludedByWalls:true,range:4,width:5});p.assets=[a];
     const l=p.levels[0],i={id:'owner',assetId:a.id,x:5,y:5,rotation:0};l.instances=[i];l.tiles={'5,3':'wall'};
     let result=parameterOverlay(p,a,a,i,l);

@@ -60,7 +60,7 @@ test('connections are undirected, can be erased and restored, and clean up when 
   update('3,3','4,3',false);
   const roundtrip=validateProject(JSON.parse(JSON.stringify(p)));
   assert.equal(nodesConnected(roundtrip.levels[0],'3,3','4,3'),false);
-  p=applyAction(p,{type:'tile.paint',data:{levelId,cells:['4,3'],tile:'floor'}});
+  p=applyAction(p,{type:'tile.paint',data:{levelId,cells:['4,3'],tile:'empty'}});
   assert.deepEqual(p.levels[0].blockedLinks,[]);
   p=applyAction(p,{type:'tile.paint',data:{levelId,cells:['4,3'],tile:'node'}});
   assert.ok(nodesConnected(p.levels[0],'3,3','4,3'));

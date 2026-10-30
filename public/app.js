@@ -1,4 +1,4 @@
-import { uid, clone, newProject, blankLevel, validateProject, applyAction, descendants, nodesConnected, adjacentNodes, isState, assetIsActive, activeDescendants, appearance, effectContains, effectRotation, parameterOverlay, facingDirection, stateEnabled } from './model.js';
+import { uid, clone, newProject, blankLevel, validateProject, applyAction, descendants, nodesConnected, adjacentNodes, isState, assetIsActive, activeDescendants, appearance, effectContains, effectRotation, parameterOverlay, facingDirection, stateEnabled, parameterDefinition } from './model.js';
 import { sprite, iconNames, iconVariants, defaultVariant } from './icons.js';
 import { initPresence } from './presence.js';
 import { deckIcon } from './cards-catalog.js';
@@ -6,6 +6,8 @@ import { manipulation } from './manipulation.js';
 import { floatingCanvas } from './floating-canvas.js';
 import { initWorkshopProgress } from './workshop-progress.js';
 import { collectItems, releaseItem, adjustStack } from './player-inventory.js';
+import { editorDraft } from './editor-draft.js';
+import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles } from './model.js';
 const $ = s => document.querySelector(s);
 // Appearance is a device preference, independent of the shared workshop.
 function applyTheme(theme) {
@@ -16,6 +18,13 @@ function applyTheme(theme) {
   document.querySelector('meta[name="theme-color"]').content=light?'#f7f3eb':'#1c231f';
 }
 applyTheme(document.documentElement.dataset.theme);
+function expandLibrary(expanded) {
+  $('#workshop-sidebar').classList.toggle('library-expanded',expanded);
+  const button=$('#library-expand');button.setAttribute('aria-pressed',String(expanded));button.setAttribute('aria-label',expanded?'Restore library layout':'Expand library vertically');button.title=expanded?'Restore library layout':'Expand library vertically';button.textContent=expanded?'↧':'↕';
+  try{localStorage.setItem('workshop-library-expanded',String(expanded));}catch{}
+}
+let libraryExpanded=false;try{libraryExpanded=localStorage.getItem('workshop-library-expanded')==='true';}catch{}
+expandLibrary(libraryExpanded);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const params = new URLSearchParams(location.search);
 let room = params.get('room');
@@ -30,6 +39,8 @@ let playerInventory=[], inventoryExpanded=false, graveyard=[], graveyardExpanded
 let dragPayload = null, showAll = false, paint = null, toastTimer, didInitialFit = false;
 let notePending = null, noteTimer;
 let connectionStart = null, libraryTab='objects';
+let floorTile = 'floor';
+const painterTile = () => tool === 'floor' ? floorTile : tool;
 let linkDraft=[];
 let copiedInstance=null, canvasPointer=null, snapToNodes=false;
 const postItColors=[['#f6dfa0','Yellow'],['#f4beb9','Pink'],['#bfddce','Mint'],['#bedbef','Blue'],['#d9caed','Lavender']];
@@ -63,7 +74,7 @@ const currentProject = () => play || project;
 const tokenArt = (a,i=null) => {const visual=isState(a)?a:appearance(currentProject(),a,i);return sprite(visual.icon,visual.color,visual.variant);};
 const stateSwitch = (a,i=null) => `<button class="state-switch ${stateEnabled(currentProject(),a,i)?'enabled':''}" ${i?`data-state-instance="${esc(i.id)}"`:''} data-toggle-state="${esc(a.id)}" role="switch" aria-checked="${stateEnabled(currentProject(),a,i)}" aria-label="Enable state ${esc(a.name)}">${stateEnabled(currentProject(),a,i)?'On':'Off'}</button>`;
 const assetPath = a => a.parentId?`${assetPath(asset(a.parentId))} / ${a.name}`:a.name;
-const isParameter = a => ['area','sight','cone','rectangle'].includes(a?.icon);
+const isParameter = a => ['area','sight','cone','rectangle','cross'].includes(a?.icon);
 const tagChip = t => `<button class="tag" data-edit-tag="${esc(t.id)}" style="--tag-color:${t.color}" title="${esc(t.rule || 'Edit tag')}">${esc(t.name)}</button>`;
 const activeInstance = () => selected?.type === 'instance' ? level().instances.find(i => i.id === selected.id) : null;
 const activeAsset = () => selected?.type === 'asset' ? asset(selected.id) : asset(activeInstance()?.assetId);
@@ -85,7 +96,7 @@ function rebuild() {
   if (selected?.type === 'objectLink' && !level().objectLinks?.some(link=>link.id===selected.id)) selected = null;
   if (selected?.type === 'postIt' && !savedLevel()?.postIts.some(note=>note.id===selected.id)) selected = null;
   linkDraft=linkDraft.filter(id=>level().instances.some(i=>i.id===id));
-  if (connectionStart && level().tiles[connectionStart] !== 'node') connectionStart = null;
+  if (connectionStart && !hasNode(level(),connectionStart)) connectionStart = null;
   setStatus(); render();
 }
 function receive(data) {
@@ -146,7 +157,7 @@ function dispatch(action, {record = true} = {}) {
     const data=action.data, item=action.type==='instance.add'?data.instance:data;
     if(item.x!==undefined || item.y!==undefined){
       const l=currentProject().levels.find(l=>l.id===data.levelId), previous=l?.instances.find(i=>i.id===data.id);
-      if(l?.tiles[[item.x??previous?.x,item.y??previous?.y].join(',')]!=='node'){toast('Snap to Nodes is on. Choose an existing node.');return false;}
+      if(!l||!hasNode(l,[item.x??previous?.x,item.y??previous?.y].join(','))){toast('Snap to Nodes is on. Choose an existing node.');return false;}
     }
   }
   if (serverNeedsRestart) {toast('Restart the workshop server, then refresh to use this update.');return false;}
@@ -178,7 +189,7 @@ function render() {
   $('#snap-to-nodes').setAttribute('aria-pressed',String(snapToNodes));
   $('#snap-to-nodes').classList.toggle('active',snapToNodes);
   $('#dimensions').textContent = `${l.width} × ${l.height} GRID`;
-  $('#asset-count').textContent = (play || project).assets.length + (play || project).tags.length;
+  $('#asset-count').textContent = (play || project).assets.filter(a=>!a.parameterId).length + (play || project).tags.length;
   $('#token-count').textContent = `${l.instances.length} token${l.instances.length === 1 ? '' : 's'} placed`;
   $('#level-tabs').innerHTML = (play || project).levels.map((l,i) => `<button data-level="${esc(l.id)}" class="${l.id === levelId ? 'active' : ''}"><span>${String(i+1).padStart(2,'0')}</span>${esc(l.name)}</button>`).join('');
   $('#edit-mode').classList.toggle('active',!play); $('#play-mode').classList.toggle('active',!!play);
@@ -188,9 +199,15 @@ function render() {
   $('#undo').disabled = !historyStack.length || !!play; $('#redo').disabled = !redoStack.length || !!play;
   $('#mode-label').innerHTML = `<span class="tiny-dot"></span>${play ? 'MANUAL PLAYTEST' : 'EDITING CANVAS'}`;
   const tools = [['select','↖','Select & move · V'],['floor','▦','Paint floor · F'],['node','⊙','Paint path nodes · N'],['wall','▧','Paint walls · W'],['empty','⌫','Erase tiles · E'],['unlink','⋯','Erase connection · X'],['connect','↔','Reconnect nodes · C'],['link','⚯','Link objects · L']];
-  $('#tools').innerHTML = tools.map(([id,icon,label]) => `<button data-tool="${id}" class="${tool === id && !staged ? 'active' : ''}" aria-label="${label}" data-tip="${label}" aria-pressed="${tool === id && !staged}">${icon}</button>`).join('') + `<div class="tool-separator"></div><button data-tool="overlays" class="${showAll ? 'active' : ''}" aria-label="Toggle all parameter overlays" data-tip="Show all parameters">◉</button>`;
+  $('#tools').innerHTML = tools.map(([id,icon,label]) => {
+    const active=tool===id&&!staged;
+    const button=`<button data-tool="${id}" class="${active?'active':''}" aria-label="${label}" data-tip="${label}" aria-pressed="${active}" ${id==='floor'?`aria-expanded="${active}" aria-controls="floor-variants"`:''}>${icon}</button>`;
+    if(id!=='floor')return button;
+    return `<div class="floor-tool">${button}<div id="floor-variants" class="floor-variants" role="group" aria-label="Floor type" ${active?'':'hidden'}><span class="floor-variants-title">Floor type</span>${floorVariants.map(({tile,label})=>`<button data-floor-tile="${tile}" aria-pressed="${floorTile===tile}" class="${floorTile===tile?'active':''}"><span class="floor-swatch ${tile}" aria-hidden="true"></span><span>${label}</span><span class="floor-choice-check" aria-hidden="true">${floorTile===tile?'✓':''}</span></button>`).join('')}</div></div>`;
+  }).join('') + `<div class="tool-separator"></div><button data-tool="overlays" class="${showAll ? 'active' : ''}" aria-label="Toggle all parameter overlays" data-tip="Show all parameters">◉</button>`;
   $('#canvas-hint').innerHTML = play ? 'Drag pieces to play. Piece changes are temporary.<br><b>Post-its and card draws stay shared and saved.</b>' : staged ? `Placing ${esc(asset(staged)?.name || 'token')}.<br><b>Click a cell to place. Esc to finish.</b>` : l.instances.length ? 'Every piece is a possibility.<br><b>Select a token to inspect its parameters.</b>' : 'An empty stage for your ideas.<br><b>Start with a token, or shape the ground.</b>';
   if (!play && ['connect','unlink'].includes(tool)) $('#canvas-hint').innerHTML = `${tool==='unlink'?'Erase a connection':'Reconnect nodes'}.<br><b>${connectionStart?'Now select an adjacent node.':'Click a line, or select two adjacent nodes.'}</b>`;
+  if(!play&&!staged&&tool==='floor')$('#canvas-hint').innerHTML=`${floorVariants.find(v=>v.tile===floorTile).label} floor.<br><b>Click or drag cells to paint. F opens floor types.</b>`;
   if(tool==='link')$('#canvas-hint').innerHTML='Click objects to include them in a link.<br><b>Choose two or more, then Create link. Esc to cancel.</b>';
   let builder=$('#link-builder');
   if(!builder){builder=document.createElement('div');builder.id='link-builder';builder.className='link-builder';$('#canvas-wrap').append(builder);}
@@ -228,19 +245,19 @@ function collectInInventory(payload,isGraveyard=false) {
 }
 function renderBoard() {
   const l = level(), board = $('#board');
+  const preview=paint?clone(l):l;
+  if(paint)paintLevelTiles(preview,[...paint.cells],paint.tile);
   board.style.setProperty('--cols',l.width); board.style.setProperty('--rows',l.height); board.style.setProperty('--cell',`${48*zoom}px`);
   let html = '';
   for (let y = 0; y < l.height; y++) for (let x = 0; x < l.width; x++) {
-    const tile = paint?.cells.has(`${x},${y}`) ? paint.tile : l.tiles[`${x},${y}`];
-    html += `<div class="cell ${tile || ''}" role="gridcell" tabindex="0" data-x="${x}" data-y="${y}" aria-label="Column ${x+1}, row ${y+1}, ${tile || 'empty'}">`;
-    if (tile === 'node') html += `<span class="node-dot ${connectionStart===`${x},${y}`?'connection-start':''}"></span>`;
+    const key=`${x},${y}`,tile=preview.tiles[key],node=hasNode(preview,key);
+    const floorVariant=floorVariants.find(v=>v.tile===tile);
+    html += `<div class="cell ${isFloor(tile)?'floor ':''}${tile || (node?'node':'')}" role="gridcell" tabindex="0" data-x="${x}" data-y="${y}" aria-label="Column ${x+1}, row ${y+1}, ${floorVariant?floorVariant.label.toLowerCase()+' floor':tile || (node?'node':'empty')}${node&&isFloor(tile)?', path node':''}">`;
+    if (node) html += `<span class="node-dot ${connectionStart===key?'connection-start':''}"></span>`;
     html += '</div>';
   }
-  const preview = {...l,tiles:{...l.tiles}};
-  if (paint) for (const key of paint.cells) preview.tiles[key] = paint.tile;
   let lines = '', handles = '';
-  for (const [from,tile] of Object.entries(preview.tiles)) {
-    if (tile !== 'node') continue;
+  for (const from of nodeCells(preview)) {
     const [x,y] = from.split(',').map(Number);
     for (const [nx,ny] of [[x+1,y],[x,y+1]]) {
       const to = `${nx},${ny}`;
@@ -264,7 +281,7 @@ function renderBoard() {
   $('#zoom-label').textContent = `${Math.round(zoom*100)}%`;
 }
 function overlays(a,i,l) {
-  const effects = [a,...activeDescendants(currentProject(),a.id,i)].filter(a => ['area','sight','cone','rectangle'].includes(a.icon));
+  const effects = [a,...activeDescendants(currentProject(),a.id,i)].filter(a => ['area','sight','cone','rectangle','cross'].includes(a.icon));
   let result = '';
   for (const effect of effects) {
     const overlay=parameterOverlay(currentProject(),a,effect,i,l);
@@ -295,7 +312,7 @@ function renderLibrary() {
   let roots;
   if(libraryTab==='objects')roots=p.assets.filter(a=>!a.parentId&&!isState(a)&&!isParameter(a));
   else if(libraryTab==='all')roots=p.assets.filter(a=>!a.parentId);
-  else roots=p.assets.filter(a=>!isState(a)&&assetIsActive(p,a.id)&&isParameter(a)===(libraryTab==='parameters'));
+  else roots=p.assets.filter(a=>!isState(a)&&(libraryTab==='parameters'?!a.parameterId:assetIsActive(p,a.id))&&isParameter(a)===(libraryTab==='parameters'));
   let html=libraryTab==='tags'?'':roots.map(a=>show(a)).join('');
   if(['tags','all'].includes(libraryTab))html+=`<div class="catalog-tags">${p.tags.filter(t=>!search||[t.name,t.rule].join(' ').toLowerCase().includes(search)).map(t=>`<button class="tag" data-edit-tag="${esc(t.id)}" draggable="${!play}" data-tag="${esc(t.id)}" style="--tag-color:${t.color}" title="${esc(t.rule||'Edit tag')}">${esc(t.name)}</button>`).join('')}</div>`;
   library.innerHTML=(staged?`<div class="staged-hint">Click the level to place ${esc(asset(staged)?.name)}. Esc to finish.</div>`:'') + (html && html!=='<div class="catalog-tags"></div>'?html:`<p class="pool-empty">${search?'No matches in this tab.':libraryTab==='objects'?'Create a token to build an object hierarchy.':`No ${libraryTab} yet. Use + to create one.`}</p>`) + (!play&&libraryTab!=='tags'?'<div class="root-drop" data-root-drop>Drop here to make a standalone token</div>':'') + (!p.assets.length&&!p.tags.length&&!play?'<button class="text-btn" id="load-example">Explore an example ↗</button>':'');
@@ -319,7 +336,11 @@ function renderInspector() {
   if(!a){el.innerHTML='<div class="eyebrow">A NOTE FROM THE WORKBENCH</div><h3>Think in small pieces.</h3><p>Select an object to explore its hierarchy, states, tags, and parameters.</p><button class="text-btn" id="inspector-guide">Open the field guide ↗</button>';return;}
   const p=currentProject(), active=assetIsActive(p,a.id,i), children=activeDescendants(p,a.id,i), states=p.assets.filter(b=>b.parentId===a.id&&isState(b));
   const tags=[...new Set((active?[a,...children]:[]).flatMap(b=>b.tags))].map(tag).filter(Boolean);
-  el.innerHTML=`<div class="eyebrow">${i?'PLACED TOKEN':isState(a)?'STATE DEFINITION':'TOKEN DEFINITION'}</div><div class="inspector-top"><div class="asset-icon">${tokenArt(a,i)}</div><div><h3>${esc(a.name)}</h3><small>${i?`CELL ${i.x+1}, ${i.y+1} · ${(i.rotation+(a.rotation||0))%360}° ICON ROTATION${facingDirection(a,i)===null?'':` · FACING ${['UP','RIGHT','DOWN','LEFT'][facingDirection(a,i)/90]}`}`:a.parentId?esc(assetPath(a)):'REUSABLE BUILDING BLOCK'}</small></div></div><p>${esc(a.rule||'No rule yet. What should this token mean?').replace(/\n/g,'<br>')}</p>${isState(a)?stateSwitch(a):''}${!active?'<p class="state-inactive-note">This branch is disabled. Its contents are hidden from the active object.</p>':''}<div class="tags">${tags.map(tagChip).join('')}</div>${isParameter(a)?`<div class="field"><label for="quick-range">${a.icon==='area'?'Radius':'Length'} <span id="quick-range-value">${a.range}</span> cells</label><input id="quick-range" type="range" min="1" max="12" value="${a.range}" ${play?'disabled':''}></div>`:''}${['cone','rectangle'].includes(a.icon)?`<div class="field"><label for="quick-width">Width in cells${a.icon==='cone'?' · far edge':''}</label><input id="quick-width" type="number" min="1" max="${a.icon==='cone'?11:12}" step="${a.icon==='cone'?2:1}" value="${a.icon==='cone'?2*Math.floor(((a.width??3)-1)/2)+1:(a.width??3)}" ${play?'disabled':''}></div>`:''}${states.length?`<div class="nested-title">STATES · ${i?'THIS PIECE ONLY':'DEFINITION DEFAULTS'}</div><label class="check-row"><input type="checkbox" data-exclusive-states="${esc(a.id)}" ${a.exclusiveStates?'checked':''} ${play?'disabled':''}> Mutually exclusive states (shared definition)</label>${i?'<button id="reset-piece-states">Use definition defaults</button>':''}`:''}${states.length>1?`<p class="state-help">${a.exclusiveStates?'Only one sibling state can be enabled.':'States combine; the last enabled state supplies the icon.'} ${i?'Switches here affect only this placement.':''}</p>`:''}${active&&p.assets.some(b=>b.parentId===a.id)?compositionTree(a,0,i):''}${!isParameter(a)?`<div class="inspector-actions"><button data-create-kind="state" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Add state</button><button data-create-kind="token" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Add token</button><button data-create-kind="parameter" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Parameter</button></div>`:''}${i?`<div class="field"><label for="instance-note">Placement notes</label><textarea id="instance-note" data-instance-note="${esc(i.id)}" maxlength="4000">${esc(i.note||'')}</textarea></div>`:''}<div class="inspector-actions">${i?'<button id="rotate-piece">↻ Rotate icon 90°</button><button id="rotate-facing">▴ Rotate facing</button><button id="duplicate-piece">⧉ Duplicate</button>':!isState(a)?`<button id="place-selected" ${play?'disabled':''}>＋ Place in level</button>`:''}<button id="edit-definition" ${play?'disabled':''}>Edit ${isState(a)?'state':'token'}</button></div><div class="inspector-actions"><button class="danger" id="delete-selected" ${play&&!i?'disabled':''}>${i?'Remove from level':isState(a)?'Delete state':'Delete token'}</button>${!i&&a.parentId&&!isState(a)?'<button id="detach-token">↳ Detach</button>':''}</div>`;
+  el.innerHTML=`<div class="eyebrow">${i?'PLACED TOKEN':isState(a)?'STATE DEFINITION':'TOKEN DEFINITION'}</div><div class="inspector-top"><div class="asset-icon">${tokenArt(a,i)}</div><div><h3>${esc(a.name)}</h3><small>${i?`CELL ${i.x+1}, ${i.y+1} · ${(i.rotation+(a.rotation||0))%360}° ICON ROTATION${facingDirection(a,i)===null?'':` · FACING ${['UP','RIGHT','DOWN','LEFT'][facingDirection(a,i)/90]}`}`:a.parentId?esc(assetPath(a)):'REUSABLE BUILDING BLOCK'}</small></div></div><p>${esc(a.rule||'No rule yet. What should this token mean?').replace(/\n/g,'<br>')}</p>${isState(a)?stateSwitch(a):''}${!active?'<p class="state-inactive-note">This branch is disabled. Its contents are hidden from the active object.</p>':''}<div class="tags">${tags.map(tagChip).join('')}</div>${isParameter(a)?`<div class="field"><label for="quick-range">${a.icon==='area'?'Radius':a.icon==='cross'?'Arm length':'Length'} <span id="quick-range-value">${a.range}</span> cells</label><input id="quick-range" type="range" min="1" max="12" value="${a.range}" ${play?'disabled':''}></div>`:''}${['cone','rectangle'].includes(a.icon)?`<div class="field"><label for="quick-width">Width in cells${a.icon==='cone'?' · far edge':''}</label><input id="quick-width" type="number" min="1" max="${a.icon==='cone'?11:12}" step="${a.icon==='cone'?2:1}" value="${a.icon==='cone'?2*Math.floor(((a.width??3)-1)/2)+1:(a.width??3)}" ${play?'disabled':''}></div>`:''}${states.length?`<div class="nested-title">STATES · ${i?'THIS PIECE ONLY':'DEFINITION DEFAULTS'}</div><label class="check-row"><input type="checkbox" data-exclusive-states="${esc(a.id)}" ${a.exclusiveStates?'checked':''} ${play?'disabled':''}> Mutually exclusive states (shared definition)</label>${i?'<button id="reset-piece-states">Use definition defaults</button>':''}`:''}${states.length>1?`<p class="state-help">${a.exclusiveStates?'Only one sibling state can be enabled.':'States combine; the last enabled state supplies the icon.'} ${i?'Switches here affect only this placement.':''}</p>`:''}${active&&p.assets.some(b=>b.parentId===a.id)?compositionTree(a,0,i):''}${!isParameter(a)?`<div class="inspector-actions"><button data-create-kind="state" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Add state</button><button data-create-kind="token" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Add token</button><button data-create-kind="parameter" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Parameter</button></div>`:''}${i?`<div class="field"><label for="instance-note">Placement notes</label><textarea id="instance-note" data-instance-note="${esc(i.id)}" maxlength="4000">${esc(i.note||'')}</textarea></div>`:''}<div class="inspector-actions">${i?'<button id="rotate-piece">↻ Rotate icon 90°</button><button id="rotate-facing">▴ Rotate facing</button><button id="duplicate-piece">⧉ Duplicate</button>':!isState(a)?`<button id="place-selected" ${play?'disabled':''}>＋ Place in level</button>`:''}<button id="edit-definition" ${play?'disabled':''}>Edit ${isState(a)?'state':'token'}</button></div><div class="inspector-actions"><button class="danger" id="delete-selected" ${play&&!i?'disabled':''}>${i?'Remove from level':isState(a)?'Delete state':'Delete token'}</button>${!i&&a.parentId&&!isState(a)?'<button id="detach-token">↳ Detach</button>':''}</div>`;
+  if(isParameter(a)) {
+    $('#edit-definition').textContent='Edit parameter';
+    if(!i){el.querySelector('.eyebrow').textContent=a.parameterId?'SHARED PARAMETER USE':'PARAMETER DEFINITION';$('#delete-selected').textContent=a.parameterId?'Detach parameter':'Delete parameter';}
+  }
   if(i) {
     const links=(level().objectLinks||[]).filter(link=>link.instanceIds.includes(i.id));
     el.insertAdjacentHTML('beforeend',`<div class="nested-title">LINKS · ${links.length}</div><div class="inspector-links">${links.map(link=>`<button data-object-link="${esc(link.id)}"><span style="background:${link.color}"></span>${esc(link.name)}</button>`).join('')}</div>`);
@@ -365,10 +386,11 @@ function objectLinkDialog(existing) {
     draft.name=name;draft.rule=$('#link-rule').value;draft.color=$('#link-color').value;
     const action=existing?{type:'objectLink.update',data:{levelId:targetLevel,...draft}}:{type:'objectLink.add',data:{levelId:targetLevel,link:draft}};
     try{applyAction(currentProject(),action);}catch(error){$('#link-form-error').textContent=error.message;return;}
-    dispatch(action);
+    if(dispatch(action)===false)return;
     closeDialog();linkDraft=[];tool='select';selected={type:'objectLink',id:draft.id};render();
   };
   if(existing)$('#delete-editing-link').onclick=()=>{deleteObjectLink(existing.id);closeDialog();};
+  watchEditor($('#object-link-form'));
 }
 function fitBoard() {
   const view = $('#board-viewport'), l=level();
@@ -389,15 +411,49 @@ function removeSelected() {
   if(selected?.type==='objectLink'){deleteObjectLink(selected.id);return;}
   const i=activeInstance(), a=activeAsset(); if(!a)return;
   if(i) { if(dispatch({type:'instance.delete',data:{levelId:level().id,id:i.id}})!==false){selected=null;render();} }
+  else if(a.parameterId){dispatch({type:'asset.delete',data:{id:a.id}});selected=null;render();}
+  else if(isParameter(a))confirmDialog(`Delete ${a.name}?`,'This deletes the shared parameter definition, all attached uses, and its placements from every level.','Delete parameter',()=>{dispatch({type:'asset.delete',data:{id:a.id}});selected=null;render();});
   else confirmDialog(`Delete ${a.name}?`,'This removes this token, its nested tokens, and their placements from every level.','Delete token',()=>{dispatch({type:'asset.delete',data:{id:a.id}});selected=null;render();});
 }
 function stage(id) { if(play)return;if(isState(asset(id)))return toast('Place the parent token instead of a state.'); staged=id; selected={type:'asset',id};tool='select';connectionStart=null; render();toast(`Click a cell to place ${asset(id).name}.`); }
-function showDialog(content) { $('#dialog').dataset.deckView='';$('#dialog-content').innerHTML=content; if(!$('#dialog').open)$('#dialog').showModal(); }
-const closeDialog=()=>$('#dialog').close();
+let dialogEditor=null;
+function showDialog(content) { dialogEditor=null;$('#dialog').dataset.deckView='';$('#dialog-content').innerHTML=content; if(!$('#dialog').open)$('#dialog').showModal(); }
+const dialogParents=[];
+function suspendDialog(restore=()=>{}) {
+  const content=document.createDocumentFragment(),focus=document.activeElement,scroll=$('#dialog').scrollTop;
+  content.append(...$('#dialog-content').childNodes);
+  dialogParents.push({content,scroll,focus,restore,editor:dialogEditor});
+}
+function watchEditor(root,extra,save=()=>root.requestSubmit()) {
+  dialogEditor=editorDraft(root,save,extra);
+}
+const closeDialog=()=>{
+  dialogEditor=null;
+  const parent=dialogParents.pop();
+  if(parent){$('#dialog-content').replaceChildren(parent.content);dialogEditor=parent.editor;$('#dialog').scrollTop=parent.scroll;parent.restore();parent.focus?.focus();}
+  else $('#dialog').close();
+};
+function requestCloseDialog() {
+  if(!dialogEditor?.dirty())return closeDialog();
+  promptToSave(dialogEditor,closeDialog);
+}
+function promptToSave(editor,discard) {
+  suspendDialog();
+  showDialog(modal('Save changes before closing?','<p class="confirm-box">You have unsaved changes. Would you like to save them before closing this editor?</p>',
+    '<button data-close autofocus>Keep editing</button><button class="danger" id="discard-editor">Discard changes</button><button class="primary" id="save-editor">Save changes</button>'));
+  $('#discard-editor').onclick=()=>{closeDialog();discard();};
+  // Restore first: validation and failed saves must leave the draft open.
+  $('#save-editor').onclick=()=>{closeDialog();editor.save();};
+  $('#dialog-content [data-close]').focus();
+}
+const hasUnsavedEditors=()=>!!dialogEditor?.dirty()||dialogParents.some(parent=>parent.editor?.dirty());
+$('#dialog').addEventListener('cancel',e=>{e.preventDefault();requestCloseDialog();});
 function modal(title,body,footer='',eyebrow='THE WORKBENCH') { return `<div class="modal"><div class="eyebrow">${eyebrow}</div><div class="modal-head"><h2>${esc(title)}</h2><button data-close aria-label="Close dialog">×</button></div>${body}${footer?`<div class="modal-footer">${footer}</div>`:''}</div>`; }
 function confirmDialog(title,text,label,action) {
+  const fromEditor=!!dialogEditor;
+  if(fromEditor)suspendDialog();
   showDialog(modal(title,`<p class="confirm-box">${esc(text)}</p>`,'<button data-close>Cancel</button><button class="primary" id="confirm-action">'+esc(label)+'</button>'));
-  $('#confirm-action').onclick=()=>{closeDialog();action();};
+  $('#confirm-action').onclick=()=>{closeDialog();if(fromEditor)closeDialog();action();};
 }
 function postItDialog(existing,position) {
   const targetLevel=level().id, draft=existing?clone(existing):{id:uid(),text:'',color:postItColor,...position};
@@ -408,6 +464,7 @@ function postItDialog(existing,position) {
     if(dispatch(action)===false)return;
     postItColor=draft.color;selected={type:'postIt',id:draft.id};tool='select';closeDialog();render();
   };
+  watchEditor($('#post-it-form'));
 }
 async function deckDialog(id) {
   activeDeck=id;
@@ -441,14 +498,47 @@ async function drawCard(deckId) {
   }catch(error){toast(`${error.message} Check the drawn-card history before trying again.`);}
   finally{cardsBusy=false;if($('#dialog').open&&$('#dialog').dataset.deckView===activeDeck)renderDeckDialog();}
 }
-function tokenDialog(existing, kind='token', parentId=null) {
+function tokenDialog(existing, kind='token', parentId=null, onSaved=null, initialName='') {
   if(play)return;
   const parent=asset(parentId);
-  const draft=clone(existing || {id:uid(),kind:kind==='state'?'state':'token',name:'',icon:kind==='parameter'?'area':kind==='state'?(parent?.icon||'torch'):'torch',rule:'',color:parent?.color||'#b8cf96',tags:[],range:2,parentId,...(kind==='state'?{enabled:true}:{})});
+  const draft=clone(existing || {id:uid(),kind:kind==='state'?'state':'token',name:initialName,icon:kind==='parameter'?'area':kind==='state'?(parent?.icon||'torch'):'torch',rule:'',color:parent?.color||'#b8cf96',tags:[],range:2,parentId,...(kind==='state'?{enabled:true}:{})});
   draft.variant ||= kind==='state'?(parent?.variant||defaultVariant(draft.icon)):defaultVariant(draft.icon);
   const editorLabel=()=>isState(draft)?'state':isParameter(draft)?'parameter':'token';
   const forbidden=new Set([draft.id,...descendants(project,draft.id).map(a=>a.id)]);
-  showDialog(modal(`${existing?'Edit':'Create'} a ${editorLabel()}`,`<form id="token-form"><div class="field"><label for="token-name">Name <span class="muted">· required</span></label><input id="token-name" maxlength="80" required placeholder="A torch, a rule, a possibility…" value="${esc(draft.name)}" autofocus></div>${(isState(draft)?[false]:[false,true]).map(parameter=>`<div class="field-label">${parameter?'Parameters · visual behavior':'Token icons'}</div><div class="icon-picker ${parameter?'parameter-picker':''}">${Object.entries(iconNames).filter(([id])=>['area','sight','cone','rectangle'].includes(id)===parameter).map(([id,name])=>`<button type="button" data-icon="${id}" class="${draft.icon===id?'active':''}" title="${name}" aria-label="${name}" aria-pressed="${draft.icon===id}">${sprite(id,draft.color)}${parameter?`<span>${name}</span>`:''}</button>`).join('')}</div>`).join('')}<div class="field-label">Icon variant</div><div id="variant-picker" class="variant-picker"></div><div class="field"><label for="token-parent">Nest inside</label><select id="token-parent" ${isState(draft)?'required':''}>${!isState(draft)?'<option value="">Standalone</option>':''}${project.assets.filter(a=>!forbidden.has(a.id)&&(!isState(draft)||!isParameter(a))).map(a=>`<option value="${esc(a.id)}" ${draft.parentId===a.id?'selected':''}>${esc(assetPath(a))}${isState(a)?' (state)':''}</option>`).join('')}</select></div>${isState(draft)?`<label class="check-row"><input id="state-enabled" type="checkbox" ${draft.enabled?'checked':''}> Enabled · show this state’s contents</label>`:''}<div class="field"><label for="token-rule">Rule / description</label><textarea id="token-rule" maxlength="4000" placeholder="What does it do? What can change? The rules are yours to define.">${esc(draft.rule)}</textarea></div><div class="field tag-field"><label for="token-tags">Tags <span class="muted">· reusable definitions</span></label><div id="token-tag-list" class="tags"></div><input id="token-tags" maxlength="60" placeholder="Search tags or create a new one…" autocomplete="off"><div id="tag-options" class="tag-options"></div><div id="inline-tag-editor" hidden></div></div><div class="field"><label>Parameter color</label><div class="color-picker">${['#b8cf96','#edc47c','#d8967f','#8fb8c2','#b2a1c6','#ddddbd'].map(c=>`<button type="button" data-color="${c}" class="${draft.color===c?'active':''}" style="--swatch:${c}" aria-label="Color ${c}"></button>`).join('')}<input id="custom-color" type="color" value="${draft.color}" aria-label="Custom parameter color"></div></div><div class="field" id="range-field" ${['area','sight','cone','rectangle'].includes(draft.icon)?'':'hidden'}><label id="range-name" for="token-range">${draft.icon==='area'?'Radius':'Length'} in grid cells</label><div class="range-control"><input type="range" id="token-range" min="1" max="12" value="${draft.range}"><output id="range-value">${draft.range} cells</output></div><small id="range-help">Visual guide only. Areas use diamond-shaped grid distance; line, cone and rectangle extend forward, excluding the origin. Cones stay centered and use odd widths; saved even cone widths round down. Even rectangle widths include one extra cell on the right. Enable Occluded by Walls to stop the effect at wall tiles.</small></div><div id="parameter-behavior" ${isParameter(draft)?'':'hidden'}><label class="check-row"><input id="token-follow-facing" type="checkbox" ${draft.followTokenFacing?'checked':''}> Follow Token Facing</label><small>Turn this parameter with the parent token’s facing triangle. Its own rotation remains a relative offset.</small><label class="check-row"><input id="token-occlusion" type="checkbox" ${draft.occludedByWalls?'checked':''}> Occluded by Walls</label><small>Wall tiles and cells behind them are hidden. Walls also block diagonal corners.</small><label class="check-row"><input id="token-overlap-enabled" type="checkbox" ${draft.overlapThreshold>0?'checked':''}> Change color when objects overlap</label><div id="overlap-options" ${draft.overlapThreshold>0?'':'hidden'}><div class="field"><label for="token-overlap-mode">Objects that trigger the color</label><select id="token-overlap-mode"><option value="any" ${draft.overlapAssetIds==null?'selected':''}>Any object</option><option value="selected" ${draft.overlapAssetIds!=null?'selected':''}>Selected objects</option></select></div><fieldset id="overlap-objects" ${draft.overlapAssetIds==null?'hidden':''}><legend>Choose library objects</legend>${project.assets.filter(a=>!isState(a)&&!isParameter(a)).map(a=>`<label class="check-row"><input type="checkbox" name="overlap-object" value="${esc(a.id)}" ${draft.overlapAssetIds?.includes(a.id)?'checked':''}> ${esc(assetPath(a))}</label>`).join('')||'<small>Create an object in the library first.</small>'}</fieldset><div class="field-row"><div class="field"><label for="token-overlap-count">At least X objects</label><input id="token-overlap-count" type="number" min="1" max="1000" value="${draft.overlapThreshold||1}"></div><div class="field"><label for="token-overlap-color">Overlap color</label><input id="token-overlap-color" type="color" value="${draft.overlapColor||'#edc47c'}"></div></div><small>Counts placements of the chosen library objects inside the visible effect, including stacked objects. Select none to disable matching. Excludes the owner and other parameter markers. The whole effect changes color.</small></div></div><div class="field" id="width-field" ${['cone','rectangle'].includes(draft.icon)?'':'hidden'}><label for="token-width">Width in cells (cone: far edge)</label><input id="token-width" type="number" min="1" max="${draft.icon==='cone'?11:12}" step="${draft.icon==='cone'?2:1}" value="${draft.icon==='cone'?2*Math.floor(((draft.width??3)-1)/2)+1:(draft.width??3)}"></div><div id="token-auto-facing-field" ${!isParameter(draft)&&!isState(draft)?'':'hidden'}><label class="check-row"><input id="token-auto-facing" type="checkbox" ${draft.autoFacing?'checked':''}> Auto-facing</label><small>Face the direction moved, including in playtest. Diagonal moves use the longer axis; equal diagonals face horizontally.</small></div><div class="field"><label for="token-direction">Direction (optional)</label><select id="token-direction">${[['','None'],[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.direction??'')===v?'selected':''}>${n}</option>`).join('')}</select><small>Facing is shown by an edge triangle. Rotating facing leaves the icon upright.</small></div><div class="field"><label for="token-rotation">Icon / parameter rotation · relative to parent / placement</label><select id="token-rotation">${[[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.rotation||0)===v?'selected':''}>${n}</option>`).join('')}</select><small>Shared definition: changes affect all placements. Placed pieces can also rotate independently.</small></div><div class="callout">A token holds an idea. Nest other tokens inside it to combine their parameters. Rules are descriptions for students to interpret.</div><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit" class="primary">${existing?'Save changes':`Create ${editorLabel()}`}</button></div></form>`));
+  showDialog(modal(`${existing?'Edit':'Create'} a ${editorLabel()}`,`<form id="token-form"><div class="field"><label for="token-name">Name <span class="muted">· required</span></label><input id="token-name" maxlength="80" required placeholder="A torch, a rule, a possibility…" value="${esc(draft.name)}" autofocus></div>${(isState(draft)?[false]:[false,true]).map(parameter=>`<div class="field-label">${parameter?'Parameters · visual behavior':'Token icons'}</div><div class="icon-picker ${parameter?'parameter-picker':''}">${Object.entries(iconNames).filter(([id])=>['area','sight','cone','rectangle','cross'].includes(id)===parameter).map(([id,name])=>`<button type="button" data-icon="${id}" class="${draft.icon===id?'active':''}" title="${name}" aria-label="${name}" aria-pressed="${draft.icon===id}">${sprite(id,draft.color)}${parameter?`<span>${name}</span>`:''}</button>`).join('')}</div>`).join('')}<div class="field-label">Icon variant</div><div id="variant-picker" class="variant-picker"></div><div class="field"><label for="token-parent">Nest inside</label><select id="token-parent" ${isState(draft)?'required':''}>${!isState(draft)?'<option value="">Standalone</option>':''}${project.assets.filter(a=>!forbidden.has(a.id)&&(!isState(draft)||!isParameter(a))).map(a=>`<option value="${esc(a.id)}" ${draft.parentId===a.id?'selected':''}>${esc(assetPath(a))}${isState(a)?' (state)':''}</option>`).join('')}</select></div>${isState(draft)?`<label class="check-row"><input id="state-enabled" type="checkbox" ${draft.enabled?'checked':''}> Enabled · show this state’s contents</label>`:''}<div class="field"><label for="token-rule">Rule / description</label><textarea id="token-rule" maxlength="4000" placeholder="What does it do? What can change? The rules are yours to define.">${esc(draft.rule)}</textarea></div><div class="field tag-field"><label for="token-tags">Tags <span class="muted">· reusable definitions</span></label><div id="token-tag-list" class="tags"></div><input id="token-tags" maxlength="60" placeholder="Search tags or create a new one…" autocomplete="off"><div id="tag-options" class="tag-options"></div><div id="inline-tag-editor" hidden></div></div><div class="field"><label>Parameter color</label><div class="color-picker">${['#b8cf96','#edc47c','#d8967f','#8fb8c2','#b2a1c6','#ddddbd'].map(c=>`<button type="button" data-color="${c}" class="${draft.color===c?'active':''}" style="--swatch:${c}" aria-label="Color ${c}"></button>`).join('')}<input id="custom-color" type="color" value="${draft.color}" aria-label="Custom parameter color"></div></div><div class="field" id="range-field" ${['area','sight','cone','rectangle','cross'].includes(draft.icon)?'':'hidden'}><label id="range-name" for="token-range">${draft.icon==='area'?'Radius':draft.icon==='cross'?'Arm length':'Length'} in grid cells</label><div class="range-control"><input type="range" id="token-range" min="1" max="12" value="${draft.range}"><output id="range-value">${draft.range} cells</output></div><small id="range-help">Visual guide only. Areas use diamond-shaped grid distance; crosses include the origin and extend equally along all four grid axes. Line, cone and rectangle extend forward, excluding the origin. Cones stay centered and use odd widths; saved even cone widths round down. Even rectangle widths include one extra cell on the right. Enable Occluded by Walls to stop the effect at wall tiles.</small></div><div id="parameter-behavior" ${isParameter(draft)?'':'hidden'}><label class="check-row"><input id="token-follow-facing" type="checkbox" ${draft.followTokenFacing?'checked':''}> Follow Token Facing</label><small>Turn this parameter with the parent token’s facing triangle. Its own rotation remains a relative offset.</small><label class="check-row"><input id="token-occlusion" type="checkbox" ${draft.occludedByWalls?'checked':''}> Occluded by Walls</label><small>Wall tiles and cells behind them are hidden. Walls also block diagonal corners.</small><label class="check-row"><input id="token-overlap-enabled" type="checkbox" ${draft.overlapThreshold>0?'checked':''}> Change color when objects overlap</label><div id="overlap-options" ${draft.overlapThreshold>0?'':'hidden'}><div class="field"><label for="token-overlap-mode">Objects that trigger the color</label><select id="token-overlap-mode"><option value="any" ${draft.overlapAssetIds==null?'selected':''}>Any object</option><option value="selected" ${draft.overlapAssetIds!=null?'selected':''}>Selected objects</option></select></div><fieldset id="overlap-objects" ${draft.overlapAssetIds==null?'hidden':''}><legend>Choose library objects</legend>${project.assets.filter(a=>!isState(a)&&!isParameter(a)).map(a=>`<label class="check-row"><input type="checkbox" name="overlap-object" value="${esc(a.id)}" ${draft.overlapAssetIds?.includes(a.id)?'checked':''}> ${esc(assetPath(a))}</label>`).join('')||'<small>Create an object in the library first.</small>'}</fieldset><div class="field-row"><div class="field"><label for="token-overlap-count">At least X objects</label><input id="token-overlap-count" type="number" min="1" max="1000" value="${draft.overlapThreshold||1}"></div><div class="field"><label for="token-overlap-color">Overlap color</label><input id="token-overlap-color" type="color" value="${draft.overlapColor||'#edc47c'}"></div></div><small>Counts placements of the chosen library objects inside the visible effect, including stacked objects. Select none to disable matching. Excludes the owner and other parameter markers. The whole effect changes color.</small></div></div><div class="field" id="width-field" ${['cone','rectangle'].includes(draft.icon)?'':'hidden'}><label for="token-width">Width in cells (cone: far edge)</label><input id="token-width" type="number" min="1" max="${draft.icon==='cone'?11:12}" step="${draft.icon==='cone'?2:1}" value="${draft.icon==='cone'?2*Math.floor(((draft.width??3)-1)/2)+1:(draft.width??3)}"></div><div id="token-auto-facing-field" ${!isParameter(draft)&&!isState(draft)?'':'hidden'}><label class="check-row"><input id="token-auto-facing" type="checkbox" ${draft.autoFacing?'checked':''}> Auto-facing</label><small>Face the direction moved, including in playtest. Diagonal moves use the longer axis; equal diagonals face horizontally.</small></div><div class="field"><label for="token-direction">Direction (optional)</label><select id="token-direction">${[['','None'],[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.direction??'')===v?'selected':''}>${n}</option>`).join('')}</select><small>Facing is shown by an edge triangle. Rotating facing leaves the icon upright.</small></div><div class="field"><label for="token-rotation">Icon / parameter rotation · relative to parent / placement</label><select id="token-rotation">${[[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.rotation||0)===v?'selected':''}>${n}</option>`).join('')}</select><small>Shared definition: changes affect all placements. Placed pieces can also rotate independently.</small></div><div class="callout">A token holds an idea. Nest other tokens inside it to combine their parameters. Rules are descriptions for students to interpret.</div><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit" class="primary">${existing?'Save changes':`Create ${editorLabel()}`}</button></div></form>`));
+  let parameterIds=project.assets.filter(a=>a.parentId===draft.id&&isParameter(a)).map(a=>a.id);
+  const pendingParameters=new Map(), removedParameters=new Set();
+  const parameterField=document.createElement('div');parameterField.className='field reusable-parameters';
+  parameterField.innerHTML='<label for="token-parameters">Parameters <span class="muted">· reusable definitions</span></label><div id="token-parameter-list" class="parameter-chips"></div><input id="token-parameters" maxlength="80" placeholder="Search parameters or create a new one…" autocomplete="off"><div id="parameter-options" class="tag-options"></div><small>Attach a definition to this token. Editing it updates every use.</small>';
+  $('#token-tags').closest('.field').after(parameterField);
+  const definitionNote=document.createElement('p');definitionNote.className='parameter-definition-note';definitionNote.textContent='Reusable parameter definition. Choose Nest inside to attach it to a token; it stays available in the Parameters library. Changes update every use.';
+  $('#token-name').closest('.field').after(definitionNote);
+  const renderParameterChoices=()=>{
+    parameterField.hidden=isParameter(draft);definitionNote.hidden=!isParameter(draft);
+    const attached=[...parameterIds.filter(id=>!removedParameters.has(id)),...pendingParameters.keys()].map(id=>parameterDefinition(project,asset(id))).filter(Boolean);
+    $('#token-parameter-list').innerHTML=attached.map(a=>`<span class="parameter-chip"><button type="button" data-edit-parameter="${esc(a.id)}" title="Edit shared parameter">${sprite(a.icon,a.color)}${esc(a.name)}</button><button type="button" data-remove-parameter="${esc(a.id)}" aria-label="Detach ${esc(a.name)}">×</button></span>`).join('');
+    const query=$('#token-parameters').value.trim().toLowerCase(),available=project.assets.filter(a=>isParameter(a)&&!a.parameterId&&!forbidden.has(a.id)&&!attached.some(b=>b.id===a.id)&&!descendants(project,a.id).some(b=>b.id===draft.id)&&[a.name,a.rule].join(' ').toLowerCase().includes(query));
+    $('#parameter-options').innerHTML=available.map(a=>`<button type="button" data-add-parameter="${esc(a.id)}">${sprite(a.icon,a.color)}<span>${esc(a.name)}<small>${esc(iconNames[a.icon])} · ${a.range} cells</small></span><span>＋</span></button>`).join('')+`<button type="button" id="inline-create-parameter">＋ ${query?`Create “${esc($('#token-parameters').value.trim())}”`:'Create a reusable parameter'}</button>`;
+  };
+  const attachParameter=id=>{
+    const previous=parameterIds.find(useId=>(asset(useId)?.parameterId||useId)===id);
+    if(previous)removedParameters.delete(previous);else if(asset(id))pendingParameters.set(id,asset(id));
+    $('#token-parameters').value='';renderParameterChoices();
+  };
+  const editParameter=(definition=null)=>{
+    const name=$('#token-parameters').value.trim();
+    suspendDialog(()=>{
+      const removedDefinitions=new Set([...removedParameters].map(id=>asset(id)?.parameterId||id));
+      parameterIds=project.assets.filter(a=>a.parentId===draft.id&&isParameter(a)).map(a=>a.id);
+      removedParameters.clear();for(const id of parameterIds)if(removedDefinitions.has(asset(id)?.parameterId||id))removedParameters.add(id);
+      renderTagChoices();renderParameterChoices();
+    });
+    tokenDialog(definition,'parameter',null,saved=>{if(!definition)attachParameter(saved.id);},name);
+    $('#dialog').scrollTop=0;
+  };
+  $('#token-parameters').oninput=renderParameterChoices;
+  $('#token-parameters').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('#parameter-options button')?.click();}};
+  renderParameterChoices();
   $('#token-overlap-mode').onchange=e=>{$('#overlap-objects').hidden=e.target.value!=='selected';};
   $('#token-overlap-enabled').onchange=e=>{$('#overlap-options').hidden=!e.target.checked;$('#token-overlap-count').disabled=!e.target.checked;};
   $('#token-overlap-count').disabled=!$('#token-overlap-enabled').checked;
@@ -467,30 +557,47 @@ function tokenDialog(existing, kind='token', parentId=null) {
   $('#token-tags').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('#tag-options button')?.click();}};
   renderTagChoices();
   $('#token-form').onclick=e=>{
+    const addParameter=e.target.closest('[data-add-parameter]'),removeParameter=e.target.closest('[data-remove-parameter]'),editShared=e.target.closest('[data-edit-parameter]');
+    if(addParameter)return attachParameter(addParameter.dataset.addParameter);
+    if(removeParameter){const id=removeParameter.dataset.removeParameter;pendingParameters.delete(id);for(const useId of parameterIds)if((asset(useId)?.parameterId||useId)===id)removedParameters.add(useId);return renderParameterChoices();}
+    if(editShared)return editParameter(asset(editShared.dataset.editParameter));
+    if(e.target.closest('#inline-create-parameter'))return editParameter();
     const add=e.target.closest('[data-add-tag]'), remove=e.target.closest('[data-remove-tag]');
     if(add)return attachTag(add.dataset.addTag);
     if(remove){draft.tags=draft.tags.filter(id=>id!==remove.dataset.removeTag);return renderTagChoices();}
     if(e.target.closest('#inline-create-tag')){
       const host=$('#inline-tag-editor');host.hidden=false;
       host.innerHTML=tagEditorFields({name:$('#token-tags').value.trim(),rule:'',color:draft.color})+'<div class="inline-actions"><button type="button" data-tag-cancel>Cancel tag</button><button type="button" class="primary" data-tag-save>Create & attach tag</button></div>';
-      bindTagEditor(host,null,t=>{host.hidden=true;host.innerHTML='';attachTag(t.id);},()=>{host.hidden=true;host.innerHTML='';});
+      const discard=()=>{host.hidden=true;host.innerHTML='';};
+      const inlineDraft=editorDraft(host,()=>host.querySelector('[data-tag-save]').click());
+      bindTagEditor(host,null,t=>{discard();attachTag(t.id);},()=>{if(inlineDraft.dirty())promptToSave(inlineDraft,discard);else discard();});
       host.querySelector('[data-tag-name]').focus();
       return;
     }
     const variant=e.target.closest('[data-variant]');if(variant){draft.variant=variant.dataset.variant;renderVariants();return;}
     const icon=e.target.closest('[data-icon]'), color=e.target.closest('[data-color]');
-    if(icon) { draft.icon=icon.dataset.icon;$('#parameter-behavior').hidden=!isParameter(draft);$('#token-auto-facing-field').hidden=isParameter(draft)||isState(draft);draft.variant=defaultVariant(draft.icon);renderVariants();$('#dialog .modal-head h2').textContent=`${existing?'Edit':'Create'} a ${editorLabel()}`;$('#token-form button[type=submit]').textContent=existing?'Save changes':`Create ${editorLabel()}`; document.querySelectorAll('[data-icon]').forEach(b=>{b.classList.toggle('active',b===icon);b.setAttribute('aria-pressed',b===icon);});$('#range-field').hidden=!['area','sight','cone','rectangle'].includes(draft.icon);$('#range-name').textContent=draft.icon==='area'?'Radius in grid cells':'Length in grid cells';$('#width-field').hidden=!['cone','rectangle'].includes(draft.icon);const widthInput=$('#token-width');widthInput.step=draft.icon==='cone'?'2':'1';widthInput.max=draft.icon==='cone'?'11':'12';if(draft.icon==='cone')widthInput.value=2*Math.floor((Number(widthInput.value)-1)/2)+1; }
+    if(icon) { draft.icon=icon.dataset.icon;$('#parameter-behavior').hidden=!isParameter(draft);$('#token-auto-facing-field').hidden=isParameter(draft)||isState(draft);draft.variant=defaultVariant(draft.icon);renderVariants();$('#dialog .modal-head h2').textContent=`${existing?'Edit':'Create'} a ${editorLabel()}`;$('#token-form button[type=submit]').textContent=existing?'Save changes':`Create ${editorLabel()}`; document.querySelectorAll('[data-icon]').forEach(b=>{b.classList.toggle('active',b===icon);b.setAttribute('aria-pressed',b===icon);});$('#range-field').hidden=!['area','sight','cone','rectangle','cross'].includes(draft.icon);$('#range-name').textContent=draft.icon==='area'?'Radius in grid cells':draft.icon==='cross'?'Arm length in grid cells':'Length in grid cells';$('#width-field').hidden=!['cone','rectangle'].includes(draft.icon);const widthInput=$('#token-width');widthInput.step=draft.icon==='cone'?'2':'1';widthInput.max=draft.icon==='cone'?'11':'12';if(draft.icon==='cone')widthInput.value=2*Math.floor((Number(widthInput.value)-1)/2)+1; }
+    if(icon)renderParameterChoices();
     if(color) { draft.color=color.dataset.color;renderVariants();$('#custom-color').value=draft.color; document.querySelectorAll('[data-color]').forEach(b=>b.classList.toggle('active',b===color)); }
   };
   $('#custom-color').oninput=e=>{draft.color=e.target.value;renderVariants();document.querySelectorAll('[data-color]').forEach(b=>b.classList.toggle('active',b.dataset.color===draft.color));};
   $('#token-range').oninput=e=>$('#range-value').textContent=`${e.target.value} cells`;
   $('#token-form').onsubmit=e=>{
-    e.preventDefault();draft.name=$('#token-name').value.trim();if(!draft.name)return $('#token-name').focus();
+    e.preventDefault();
+    const inlineTag=$('#inline-tag-editor');
+    if(!inlineTag.hidden){inlineTag.querySelector('[data-tag-save]').click();if(!inlineTag.hidden)return;}
+    draft.name=$('#token-name').value.trim();if(!draft.name)return $('#token-name').focus();
     draft.parentId=$('#token-parent').value||null;if(isState(draft))draft.enabled=$('#state-enabled').checked;
     draft.rule=$('#token-rule').value;draft.tags=draft.tags.filter(id=>tag(id));draft.range=Number($('#token-range').value);draft.width=Number($('#token-width').value);draft.rotation=Number($('#token-rotation').value);draft.direction=$('#token-direction').value===''?null:Number($('#token-direction').value);draft.autoFacing=$('#token-auto-facing').checked;draft.followTokenFacing=$('#token-follow-facing').checked;draft.occludedByWalls=$('#token-occlusion').checked;draft.overlapThreshold=$('#token-overlap-enabled').checked?Number($('#token-overlap-count').value):0;draft.overlapColor=$('#token-overlap-color').value;draft.overlapAssetIds=$('#token-overlap-mode').value==='selected'?[...document.querySelectorAll('input[name=overlap-object]:checked')].map(input=>input.value):null;
-    try { applyAction(project,{type:existing?'asset.update':'asset.add',data:draft}); }catch(error){return toast(error.message);}
-    selected={type:'asset',id:draft.id};dispatch({type:existing?'asset.update':'asset.add',data:draft});closeDialog();toast(existing?`${editorLabel()} updated. All placements use this definition.`:isState(draft)?'State created. Add tags, parameters, or tokens inside it.':'Token created. Drag it into the level or another token.');
+    const action={type:'asset.compose',data:{asset:draft,usageId:uid(),originalUsageId:uid(),removals:[...removedParameters],attachments:[...pendingParameters.keys()].map(id=>({id,usageId:uid(),originalUsageId:uid()}))}};
+    try { applyAction(project,action); }catch(error){return toast(error.message);}
+    if(dispatch(action)===false)return;
+    selected={type:'asset',id:draft.id};closeDialog();onSaved?.(draft);render();toast(existing?`${editorLabel()} updated everywhere it is used.`:isParameter(draft)?'Reusable parameter created. Attach it to any token.':isState(draft)?'State created. Add tags, parameters, or tokens inside it.':'Token created. Drag it into the level or another token.');
   };
+  $('#token-tags').setAttribute('data-draft-ignore','');
+  $('#token-parameters').setAttribute('data-draft-ignore','');
+  watchEditor($('#token-form'),()=>({icon:draft.icon,variant:draft.variant,color:draft.color,tags:draft.tags,
+    parameters:[...parameterIds.filter(id=>!removedParameters.has(id)).map(id=>asset(id)?.parameterId||id),...pendingParameters.keys()].sort()}));
 }
 function tagEditorFields(t) {
   return `<div class="field"><label>Tag name<input data-tag-name maxlength="60" value="${esc(t.name)}" placeholder="Pickable, fragile, light source…" aria-label="Tag name"></label></div><div class="field"><label>Rule / description<textarea data-tag-rule maxlength="4000" aria-label="Tag rule / description" placeholder="What does this tag mean?">${esc(t.rule)}</textarea></label></div><div class="field"><label>Tag color<input data-tag-color type="color" value="${t.color}" aria-label="Tag color"></label></div>`;
@@ -503,20 +610,23 @@ function bindTagEditor(host, existing, onSave, onCancel) {
     if(!t.name){host.querySelector('[data-tag-name]').focus();return toast('Give this tag a name.');}
     const action={type:existing?'tag.update':'tag.add',data:t};
     try{applyAction(project,action);}catch(error){return toast(error.message);}
-    dispatch(action);onSave(t);
+    if(dispatch(action)===false)return;
+    onSave(t);
   };
 }
 function tagDialog(existing) {
   if(play)return;
   const t=existing || {name:'',rule:'',color:'#b8cf96'};
   showDialog(modal(existing?'Edit a tag':'Create a tag',`<div id="tag-editor">${tagEditorFields(t)}<p>Tags can be reused in any token. Editing a tag updates every token that uses it.</p><div class="modal-footer">${existing?'<button class="danger" id="delete-tag">Delete tag</button>':''}<button data-tag-cancel>Cancel</button><button class="primary" data-tag-save>${existing?'Save tag':'Create tag'}</button></div></div>`));
-  bindTagEditor($('#tag-editor'),existing,()=>{closeDialog();toast(existing?'Tag updated everywhere it is used.':'Tag created. Add it to any token.');},closeDialog);
+  bindTagEditor($('#tag-editor'),existing,()=>{closeDialog();toast(existing?'Tag updated everywhere it is used.':'Tag created. Add it to any token.');},requestCloseDialog);
+  const tagEditor=$('#tag-editor');
+  watchEditor(tagEditor,undefined,()=>tagEditor.querySelector('[data-tag-save]').click());
   $('#tag-editor [data-tag-name]').focus();
   if(existing)$('#delete-tag').onclick=()=>confirmDialog(`Delete ${existing.name}?`,'This removes the tag from the library and every token that uses it.','Delete tag',()=>dispatch({type:'tag.delete',data:{id:existing.id}}));
 }
 function guideDialog() {
   showDialog(modal('Small pieces. Big possibilities.',`<p>A virtual tabletop for exploring atomic parameters. There is no automated game logic: you decide what every piece means.</p><div class="help-list">${[
-    ['Shape the stage','Paint floor, walls, or GO path nodes with the left toolbar. Adjacent path nodes connect automatically. Use Erase connection (X) or Reconnect nodes (C), then click a line or two adjacent nodes. Hold and drag to paint tiles.'],
+    ['Shape the stage','Select the floor painter (F) to open its sub-panel and choose Elevated, Ground, or Underground. Nodes can be painted on any floor without replacing it. Repainting a floor keeps its nodes; walls and Erase Tiles remove both layers. Adjacent path nodes connect automatically. Use Erase connection (X) or Reconnect nodes (C), then click a line or two adjacent nodes. Hold and drag to paint tiles.'],
     ['Browse your building blocks','Objects shows token hierarchies, including nested states, parameters and tags. Tokens, Parameters and Tags are focused catalogs; All shows every hierarchy and the tag catalog. Use the arrows to collapse branches.'],
     ['Give an idea a token','Use + in the library. Choose a name, sprite, rule, tags and color. AoE and LoS have their own Parameters pool and adjustable cell distances. Tags have a separate editor; search existing tags or create one inside the token editor.'],
     ['Compose a mechanic','Drag Area of effect onto Torch in the library. It becomes a nested parameter. Nested tokens can contain more tokens; drag to the standalone drop zone to detach.'],
@@ -526,7 +636,7 @@ function guideDialog() {
     ['Play by hand, together','Playtest makes a temporary local copy of the pieces. Move and rotate freely, then reset or return to editing. Post-its and card draws stay shared and saved. Share a room link for live editing on the same local network.'],
     ['Leave an observation','Choose a color, then drag Post-it from the floating toolbar onto any canvas space. Drag its body to move freely; double-click to edit. Drag Arrow, Step, or Question to annotate the board. Use Visibility to hide categories, or an item’s minus button to hide it. Notes survive playtest resets.'],
     ['Draw a design prompt','Design Experiments and Design Challenges each start with 12 cards. Draw randomly without replacement; Return all cards resets only that deck for this room. Review the inventory in the deck dialog, or open Card Studio to edit the repository files on the host.']
-  ].map(([title,text],n)=>`<div class="help-item"><span class="help-number">0${n+1}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}</div><div class="callout">Overlays are visual rulers: area uses Manhattan (diamond) distance, Line Effect is a straight directional line; cones widen toward their far edge and rectangles keep a constant width. Library rotation updates the shared definition; placement rotation adds to it. Neither applies collisions, visibility, inventory, turns, or win conditions. Multiple tokens can share a cell; remove or move the top one to reach the others.</div><details><summary>Keyboard shortcuts</summary><p>V select · F floor · N nodes · W walls · E erase tiles · X erase connection · C reconnect · R rotate · Delete remove selected token · Esc deselect · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo · / search. Use arrow keys to move a selected piece; Enter on a focused cell activates it.</p></details><p style="margin-top:18px;font-size:10px">Original workshop sprites. An unofficial, educational fan project inspired by the GO games and A Plague Tale.</p>`,'<button data-close class="primary">Back to the workbench</button>','FIELD GUIDE'));
+  ].map(([title,text],n)=>`<div class="help-item"><span class="help-number">0${n+1}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}</div><div class="callout">Overlays are visual rulers: area uses Manhattan (diamond) distance, Line Effect is a straight directional line; cones widen toward their far edge and rectangles keep a constant width. Cross Effect includes the origin and extends one-cell-wide arms in all four directions. Library rotation updates the shared definition; placement rotation adds to it. Neither applies collisions, visibility, inventory, turns, or win conditions. Multiple tokens can share a cell; remove or move the top one to reach the others.</div><details><summary>Keyboard shortcuts</summary><p>V select · F floor · N nodes · W walls · E erase tiles · X erase connection · C reconnect · R rotate · Delete remove selected token · Esc deselect · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo · / search. Use arrow keys to move a selected piece; Enter on a focused cell activates it.</p></details><p style="margin-top:18px;font-size:10px">Original workshop sprites. An unofficial, educational fan project inspired by the GO games and A Plague Tale.</p>`,'<button data-close class="primary">Back to the workbench</button>','FIELD GUIDE'));
 }
 function filesDialog() {
   showDialog(modal('Your workshop, to keep.',`<p>Changes save automatically on this server. Keep a project backup, or export a connected inventory for Excel and Google Sheets.</p><div class="files-grid"><button id="export-project">↧ Export project<small>Download a readable .json backup</small></button><button id="export-inventory">▦ Export spreadsheet<small>Recipes, challenges and progression · .xlsx</small></button><button id="import-project">↥ Import project<small>Replace this room with a saved project</small></button><button id="example-project">✧ Load example<small>A torch, light, rats, and a guard</small></button><button id="new-project">＋ Clear workshop<small>Start again with an empty library</small></button></div><div class="callout">Room <b>${esc(room)}</b> · Project backups contain the saved design. Spreadsheet exports can also capture your private playtest before you return to Edit.</div>`));
@@ -573,7 +683,8 @@ async function shareDialog() {
 function levelSettings() {
   if(play)return;const l=level();
   showDialog(modal('Set the scene.',`<form id="level-form"><div class="field"><label for="level-name">Level name</label><input id="level-name" required maxlength="80" value="${esc(l.name)}"></div><div class="field-row"><div class="field"><label for="level-width">Columns · 4–32</label><input type="number" id="level-width" min="4" max="32" value="${l.width}" required></div><div class="field"><label for="level-height">Rows · 4–24</label><input type="number" id="level-height" min="4" max="24" value="${l.height}" required></div></div><p>When making a level smaller, remove any tiles and pieces outside its new bounds first.</p><div class="modal-footer"><button type="button" class="danger" id="delete-level" ${project.levels.length===1?'disabled':''}>Delete level</button><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save level</button></div></form>`));
-  $('#level-form').onsubmit=e=>{e.preventDefault();const data={levelId:l.id,name:$('#level-name').value.trim(),width:Number($('#level-width').value),height:Number($('#level-height').value)};if(!data.name)return;try{applyAction(project,{type:'level.update',data});}catch{return toast('Remove tiles and tokens beyond the new level size before shrinking.');}dispatch({type:'level.update',data});closeDialog();fitBoard();};
+  $('#level-form').onsubmit=e=>{e.preventDefault();const data={levelId:l.id,name:$('#level-name').value.trim(),width:Number($('#level-width').value),height:Number($('#level-height').value)};if(!data.name)return;try{applyAction(project,{type:'level.update',data});}catch{return toast('Remove tiles and tokens beyond the new level size before shrinking.');}if(dispatch({type:'level.update',data})===false)return;closeDialog();fitBoard();};
+  watchEditor($('#level-form'));
   $('#delete-level').onclick=()=>confirmDialog('Delete this level?',`The level “${l.name}” and its placements will be removed. Token definitions stay in the library.`,'Delete level',()=>{dispatch({type:'level.delete',data:{levelId:l.id}});levelId=project.levels[0].id;selected=null;render();fitBoard();});
 }
 function example() {
@@ -587,8 +698,8 @@ function example() {
   const guard=add('Guard','guard','Patrol a path. Rotate to change facing.',['Patrol'],'#8fb8c2');
   add('Watchful gaze','sight','A straight visual ruler. Decide whether walls block vision and how the guard reacts.',['Directional'],'#8fb8c2',3,guard);
   const exit=add('Escape','exit','Reach here together. What are the conditions for escape?',['Goal']);
-  for(let x=3;x<=10;x++) l.tiles[`${x},5`]='node';
-  for(let y=3;y<=7;y++) l.tiles[`7,${y}`]='node';
+  for(let x=3;x<=10;x++)paintLevelTiles(l,[`${x},5`],'node');
+  for(let y=3;y<=7;y++)paintLevelTiles(l,[`7,${y}`],'node');
   for(const [assetId,x,y,rotation] of [[girl,3,5,90],[kid,3,6,0],[torch,5,5,0],[rat,8,6,0],[rat,9,7,0],[guard,7,3,180],[exit,10,5,90]])l.instances.push({id:uid(),assetId,x,y,rotation,note:''});
   for(const [x,y] of [[5,3],[5,4],[9,3],[9,4],[5,7]])l.tiles[`${x},${y}`]='wall';
   p.version=1;const result=validateProject(p);
@@ -627,7 +738,7 @@ function editConnection(from,to) {
   dispatch({type:'link.update',data:{levelId:level().id,from,to,connected:tool==='connect'}});
 }
 function connectionNode(key) {
-  if(level().tiles[key]!=='node')return toast('Choose a path node.');
+  if(!hasNode(level(),key))return toast('Choose a path node.');
   if(!connectionStart){connectionStart=key;render();return;}
   if(connectionStart===key){connectionStart=null;render();return;}
   if(!adjacentNodes(level(),connectionStart,key))return toast('Choose a node directly beside the first one.');
@@ -639,7 +750,7 @@ document.addEventListener('click', e=>{
   const quantity=e.target.closest('[data-stack-adjust]');if(quantity&&play){playerInventory=adjustStack(playerInventory,quantity.dataset.stackAdjust,Number(quantity.dataset.delta));renderInventory();return;}
   const discardGraveyard=e.target.closest('[data-discard-graveyard]');if(discardGraveyard&&play){graveyard=graveyard.filter(i=>i.id!==discardGraveyard.dataset.discardGraveyard);renderInventory(true);return;}
   const discard=e.target.closest('[data-discard-inventory]');if(discard&&play){playerInventory=playerInventory.filter(i=>i.id!==discard.dataset.discardInventory);renderInventory();return;}
-  const close=e.target.closest('[data-close]');if(close)return closeDialog();
+  const close=e.target.closest('[data-close]');if(close)return requestCloseDialog();
   const deck=e.target.closest('[data-deck],[data-review-deck]');if(deck)return deckDialog(deck.dataset.deck||deck.dataset.reviewDeck);
   const color=e.target.closest('[data-note-color]');if(color){postItColor=color.dataset.noteColor;staged=null;selected=null;render();return;}
   const postIt=e.target.closest('[data-post-it]');if(postIt){
@@ -657,6 +768,8 @@ document.addEventListener('click', e=>{
   const editObjectLink=e.target.closest('[data-edit-object-link]');if(editObjectLink)return objectLinkDialog(level().objectLinks.find(link=>link.id===editObjectLink.dataset.editObjectLink));
   const deleteLink=e.target.closest('[data-delete-object-link]');if(deleteLink)return deleteObjectLink(deleteLink.dataset.deleteObjectLink);
   const link=e.target.closest('[data-link-from]');if(link&&!play)return editConnection(link.dataset.linkFrom,link.dataset.linkTo);
+  const floorChoice=e.target.closest('[data-floor-tile]');
+  if(floorChoice&&!play){floorTile=floorChoice.dataset.floorTile;tool='floor';staged=null;selected=null;connectionStart=null;linkDraft=[];render();$(`[data-floor-tile="${floorTile}"]`).focus();return;}
   const icon=e.target.closest('[data-tool]');
   if(icon){if(icon.dataset.tool==='overlays')showAll=!showAll;else{tool=icon.dataset.tool;staged=null;selected=null;connectionStart=null;linkDraft=[];}return render();}
   const tab=e.target.closest('[data-level]');if(tab){levelId=tab.dataset.level;selected=null;staged=null;connectionStart=null;linkDraft=[];render();fitBoard();return;}
@@ -674,6 +787,7 @@ document.addEventListener('click', e=>{
     if(staged)place(staged,Number(cell.dataset.x),Number(cell.dataset.y));else{selected=null;render();}return;
   }
   switch(e.target.closest('button')?.id){
+    case 'library-expand':expandLibrary(!$('#workshop-sidebar').classList.contains('library-expanded'));break;
     case 'inventory-toggle':inventoryExpanded=!inventoryExpanded;renderInventory();break;
     case 'graveyard-toggle':graveyardExpanded=!graveyardExpanded;renderInventory(true);break;
     case 'post-it-tool':toast('Drag Post-it from the floating toolbar onto the canvas.');break;
@@ -702,7 +816,7 @@ document.addEventListener('click', e=>{
     case 'delete-selected':removeSelected();break;
     case 'place-selected':if(activeAsset())stage(activeAsset().id);break;
     case 'edit-definition':if(activeAsset())tokenDialog(activeAsset());break;
-    case 'detach-token':dispatch({type:'asset.update',data:{id:activeAsset().id,parentId:null}});break;
+    case 'detach-token':dispatch(activeAsset().parameterId?{type:'asset.delete',data:{id:activeAsset().id}}:{type:'asset.update',data:{id:activeAsset().id,parentId:null}});break;
     case 'duplicate-piece':editingTools.duplicate();break;
     case 'reset-piece-states':if(activeInstance())dispatch({type:'instance.resetStates',data:{levelId:level().id,id:activeInstance().id}});break;
     case 'snap-to-nodes':snapToNodes=!snapToNodes;try{localStorage.setItem('workshop-snap-to-nodes',String(snapToNodes));}catch{}render();break;
@@ -822,20 +936,22 @@ function dropToken(target,payload){
   if(row||root){const parentId=row?.dataset.asset||null;
     if(!parentId&&isState(asset(payload.id)))return toast('A state must stay inside a token.');
     if(parentId===payload.id || descendants(project,payload.id).some(a=>a.id===parentId))return toast('A token cannot be nested inside itself or its own children.');
-    dispatch({type:'asset.update',data:{id:payload.id,parentId}});toast(parentId?'Token nested. Its parameters travel with the parent.':'Token detached.');
+    const moving=asset(payload.id);
+    const action=isParameter(moving)&&parentId?{type:'parameter.attach',data:{id:payload.id,parentId,usageId:uid(),originalUsageId:uid()}}:moving.parameterId&&!parentId?{type:'asset.delete',data:{id:payload.id}}:{type:'asset.update',data:{id:payload.id,parentId}};
+    if(dispatch(action)!==false)toast(parentId?(isParameter(moving)?'Shared parameter attached. It remains available in the library.':'Token nested. Its parameters travel with the parent.'):'Token detached.');
   }
 }
 document.addEventListener('dragend',()=>{dragPayload=null;document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));});
 $('#board').addEventListener('pointerdown',e=>{
   if(play||staged||['select','connect','unlink','link','postIt'].includes(tool)||e.button!==0||e.target.closest('[data-instance],[data-object-link],[data-post-it]'))return;
   const cell=e.target.closest('.cell');if(!cell)return;
-  e.preventDefault();paint={tile:tool,cells:new Set([`${cell.dataset.x},${cell.dataset.y}`])};$('#board').setPointerCapture(e.pointerId);renderBoard();
+  e.preventDefault();paint={tile:painterTile(),cells:new Set([`${cell.dataset.x},${cell.dataset.y}`])};$('#board').setPointerCapture(e.pointerId);renderBoard();
 });
 $('#board').addEventListener('pointermove',e=>{
   if(!paint)return;const cell=document.elementFromPoint(e.clientX,e.clientY)?.closest('.cell');
   if(cell){const key=`${cell.dataset.x},${cell.dataset.y}`;if(!paint.cells.has(key)){paint.cells.add(key);renderBoard();}}
 });
-function finishPaint(){if(!paint)return;const data={levelId:level().id,cells:[...paint.cells].filter(key=>(level().tiles[key]||'empty')!==paint.tile),tile:paint.tile};paint=null;if(data.cells.length)dispatch({type:'tile.paint',data});else renderBoard();}
+function finishPaint(){if(!paint)return;const data={levelId:level().id,cells:[...paint.cells].filter(key=>paint.tile==='node'?!hasNode(level(),key):paint.tile==='empty'?!!level().tiles[key]||hasNode(level(),key):level().tiles[key]!==paint.tile),tile:paint.tile};paint=null;if(data.cells.length)dispatch({type:'tile.paint',data});else renderBoard();}
 $('#board').addEventListener('pointerup',finishPaint);
 $('#board').addEventListener('pointercancel',()=>{paint=null;renderBoard();});
 document.addEventListener('keydown',e=>{
@@ -863,15 +979,15 @@ document.addEventListener('keydown',e=>{
     const linkPiece=e.target.closest('[data-instance]');if(tool==='link'&&linkPiece){e.preventDefault();pickLinkObject(linkPiece.dataset.instance);return;}
     const cell=e.target.closest('.cell'),row=e.target.closest('[data-asset]');
     if(row){selected={type:'asset',id:row.dataset.asset};render();return;}
-    if(cell){if(tool==='postIt')postItDialog(null,{x:Number(cell.dataset.x),y:Number(cell.dataset.y)});else if(staged)place(staged,Number(cell.dataset.x),Number(cell.dataset.y));else if(!play&&['connect','unlink'].includes(tool))connectionNode(`${cell.dataset.x},${cell.dataset.y}`);else if(tool!=='select'&&!play)dispatch({type:'tile.paint',data:{levelId:level().id,cells:[`${cell.dataset.x},${cell.dataset.y}`],tile:tool}});}return;
+    if(cell){if(tool==='postIt')postItDialog(null,{x:Number(cell.dataset.x),y:Number(cell.dataset.y)});else if(staged)place(staged,Number(cell.dataset.x),Number(cell.dataset.y));else if(!play&&['connect','unlink'].includes(tool))connectionNode(`${cell.dataset.x},${cell.dataset.y}`);else if(tool!=='select'&&!play)dispatch({type:'tile.paint',data:{levelId:level().id,cells:[`${cell.dataset.x},${cell.dataset.y}`],tile:painterTile()}});}return;
   }
   const directions={ArrowUp:[0,-1],ArrowRight:[1,0],ArrowDown:[0,1],ArrowLeft:[-1,0]},i=activeInstance();
   if(directions[e.key]&&activePostIt()){e.preventDefault();const note=activePostIt(),[dx,dy]=directions[e.key],x=note.x+dx,y=note.y+dy;if(x>=0&&y>=0&&x<savedLevel().width&&y<savedLevel().height)dispatch({type:'postIt.update',data:{levelId:level().id,id:note.id,x,y}});return;}
   if(directions[e.key]&&i){e.preventDefault();const [dx,dy]=directions[e.key],x=i.x+dx,y=i.y+dy;if(x>=0&&y>=0&&x<level().width&&y<level().height)dispatch({type:'instance.update',data:{levelId:level().id,id:i.id,x,y}});return;}
   const shortcut={v:'select',f:'floor',n:'node',w:'wall',e:'empty',x:'unlink',c:'connect',l:'link'}[e.key.toLowerCase()];if(shortcut&&!play){tool=shortcut;staged=null;selected=null;connectionStart=null;linkDraft=[];render();}
 });
-$('#dialog').addEventListener('click',e=>{if(e.target===$('#dialog')){const r=$('#dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
-window.addEventListener('beforeunload',e=>{if(pending.length||notePending){e.preventDefault();e.returnValue='';}});
+$('#dialog').addEventListener('click',e=>{if(e.target===$('#dialog')){const r=$('#dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)requestCloseDialog();}});
+window.addEventListener('beforeunload',e=>{if(pending.length||notePending||hasUnsavedEditors()){e.preventDefault();e.returnValue='';}});
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(fitBoard,200);});
 editingTools=manipulation({getProject:currentProject,getLevel:level,getSelected:()=>selected,setSelected:value=>{selected=value;staged=null;tool='select';},dispatch,render,toast,isPlay:()=>!!play,snap:()=>snapToNodes,esc,collectInventory:collectInInventory});
 floatingTools=floatingCanvas({getProject:()=>project,getLevel:level,dispatch,edit:postItDialog,uid,esc});

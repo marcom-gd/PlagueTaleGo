@@ -10,6 +10,32 @@ export const uid = () => {
   return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
 };
 export const clone = x => JSON.parse(JSON.stringify(x));
+// Keep the original tile value for Ground so existing maps retain their floors.
+export const floorVariants = [
+  { tile: 'floor-elevated', label: 'Elevated' },
+  { tile: 'floor', label: 'Ground' },
+  { tile: 'floor-underground', label: 'Underground' }
+];
+export const isFloor = tile => floorVariants.some(variant => variant.tile === tile);
+// Legacy maps store standalone nodes in tiles; new nodes use a separate layer.
+export const hasNode = (level, key) => level.tiles[key] === 'node' || (level.nodes || []).includes(key);
+export const nodeCells = level => [...new Set([...Object.keys(level.tiles).filter(key => level.tiles[key] === 'node'), ...(level.nodes || [])])];
+export function paintLevelTiles(level, cells, tile) {
+  for (const key of cells) {
+    const node = hasNode(level, key);
+    if (tile === 'node' || (isFloor(tile) && node)) {
+      if (!level.nodes) level.nodes = [];
+      if (!level.nodes.includes(key)) level.nodes.push(key);
+    }
+    if (tile === 'node') {
+      if (!isFloor(level.tiles[key])) delete level.tiles[key];
+    } else {
+      if (!isFloor(tile) && level.nodes) level.nodes = level.nodes.filter(cell => cell !== key);
+      if (tile === 'empty') delete level.tiles[key]; else level.tiles[key] = tile;
+    }
+  }
+  level.blockedLinks = level.blockedLinks.filter(key => adjacentNodes(level, ...key.split('|')));
+}
 export function blankLevel(id = uid(), name = 'The quiet courtyard') {
   const tiles = {};
   for (let y = 2; y < 9; y++) for (let x = 2; x < 12; x++) tiles[`${x},${y}`] = 'floor';
@@ -19,7 +45,7 @@ export const newProject = () => ({ version: 3, title: 'Plague Tale GO', tags: []
 // A canonical key makes a connection identical from either endpoint.
 export const linkKey = (a, b) => [a, b].sort().join('|');
 export function adjacentNodes(l, a, b) {
-  if (l.tiles[a] !== 'node' || l.tiles[b] !== 'node') return false;
+  if (!hasNode(l,a) || !hasNode(l,b)) return false;
   const [ax, ay] = a.split(',').map(Number), [bx, by] = b.split(',').map(Number);
   return Math.abs(ax-bx) + Math.abs(ay-by) === 1;
 }
@@ -56,6 +82,19 @@ export function descendants(project, id, visited = new Set()) {
   return project.assets.filter(a => a.parentId === id).flatMap(a => [a, ...descendants(project, a.id, visited)]);
 }
 export const isState = a => a?.kind === 'state';
+export const isParameter = a => !isState(a) && ['area','sight','cone','rectangle','cross'].includes(a?.icon);
+// Uses keep their own hierarchy identity, while these properties belong to the definition.
+const parameterKeys=['name','icon','variant','rule','tags','color','range','width','rotation','direction','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds'];
+export const parameterDefinition = (project,a) => a?.parameterId ? project.assets.find(b=>b.id===a.parameterId) : a;
+function syncParameters(p) {
+  for(const use of p.assets.filter(a=>a.parameterId)) {
+    const definition=parameterDefinition(p,use);
+    if(!definition || definition.parameterId || !isParameter(definition))throw Error('Missing reusable parameter definition.');
+    for(const key of parameterKeys) {
+      if(key in definition)use[key]=clone(definition[key]);else delete use[key];
+    }
+  }
+}
 export function stateEnabled(project,a,instance=null) {
   const override=s=>instance?.stateOverrides&&Object.hasOwn(instance.stateOverrides,s.id)?instance.stateOverrides[s.id]:undefined;
   const enabled=s=>override(s)??s.enabled;
@@ -109,7 +148,7 @@ export function validateProject(p) {
     if(a.rotation!==undefined && ![0,90,180,270].includes(a.rotation))throw Error('Invalid definition rotation.');
     if(a.occludedByWalls!==undefined && typeof a.occludedByWalls!=='boolean')throw Error('Invalid wall occlusion.');
     if(a.overlapThreshold!==undefined && (!Number.isInteger(a.overlapThreshold)||a.overlapThreshold<0||a.overlapThreshold>1000))throw Error('Invalid overlap threshold.');
-    if(a.overlapAssetIds!=null && (!Array.isArray(a.overlapAssetIds)||a.overlapAssetIds.length>500||new Set(a.overlapAssetIds).size!==a.overlapAssetIds.length||a.overlapAssetIds.some(id=>!p.assets.some(b=>b.id===id&&!isState(b)&&!['area','sight','cone','rectangle'].includes(b.icon)))))throw Error('Invalid overlap objects.');
+    if(a.overlapAssetIds!=null && (!Array.isArray(a.overlapAssetIds)||a.overlapAssetIds.length>500||new Set(a.overlapAssetIds).size!==a.overlapAssetIds.length||a.overlapAssetIds.some(id=>!p.assets.some(b=>b.id===id&&!isState(b)&&!['area','sight','cone','rectangle','cross'].includes(b.icon)))))throw Error('Invalid overlap objects.');
     if(a.overlapColor!==undefined && !/^#[0-9a-f]{6}$/i.test(a.overlapColor))throw Error('Invalid overlap color.');
     if(a.width!==undefined && (!Number.isInteger(a.width)||a.width<1||a.width>12))throw Error('Invalid effect width.');
     if(a.kind!==undefined && !['token','state'].includes(a.kind))throw Error('Invalid token kind.');
@@ -119,7 +158,11 @@ export function validateProject(p) {
   }
   for (const a of p.assets) {
     if (a.parentId && !p.assets.some(b => b.id === a.parentId)) throw Error('Missing parent token.');
-    if(isState(a) && ['area','sight','cone','rectangle'].includes(p.assets.find(b=>b.id===a.parentId)?.icon))throw Error('States must belong to a token or another state.');
+    if(a.parameterId!==undefined) {
+      const definition=parameterDefinition(p,a);
+      if(!a.parentId || !isParameter(a) || !definition || definition===a || definition.parameterId || !isParameter(definition) || definition.parentId || parameterKeys.some(key=>JSON.stringify(a[key])!==JSON.stringify(definition[key])))throw Error('Invalid reusable parameter reference.');
+    }
+    if(isState(a) && ['area','sight','cone','rectangle','cross'].includes(p.assets.find(b=>b.id===a.parentId)?.icon))throw Error('States must belong to a token or another state.');
     const seen = new Set([a.id]); let parent = a.parentId;
     while (parent) { if (seen.has(parent)) throw Error('Tokens cannot contain themselves.'); seen.add(parent); parent = p.assets.find(b => b.id === parent)?.parentId; }
   }
@@ -138,8 +181,13 @@ export function validateProject(p) {
     }
     for (const [key, value] of Object.entries(l.tiles)) {
       const [x, y] = key.split(',').map(Number);
-      if (!/^\d+,\d+$/.test(key) || x >= l.width || y >= l.height || !['floor', 'wall', 'node'].includes(value)) throw Error('Invalid level tile.');
+      if (!/^\d+,\d+$/.test(key) || x >= l.width || y >= l.height || !(isFloor(value) || ['wall', 'node'].includes(value))) throw Error('Invalid level tile.');
     }
+    if(l.nodes!==undefined && (!Array.isArray(l.nodes) || l.nodes.length>l.width*l.height || new Set(l.nodes).size!==l.nodes.length || l.nodes.some(key=>{
+      if(typeof key!=='string'||!/^\d+,\d+$/.test(key))return true;
+      const [x,y]=key.split(',').map(Number);
+      return x>=l.width||y>=l.height||l.tiles[key]==='wall'||l.tiles[key]==='node';
+    })))throw Error('Invalid level nodes.');
     if (!Array.isArray(l.blockedLinks) || new Set(l.blockedLinks).size !== l.blockedLinks.length || l.blockedLinks.length > 1500) throw Error('Invalid node connections.');
     for (const key of l.blockedLinks) {
       if (typeof key !== 'string') throw Error('Invalid node connection.');
@@ -170,6 +218,33 @@ export function applyAction(input, action) {
   const level = () => { const l = p.levels.find(l => l.id === d.levelId); if (!l) throw Error('Level no longer exists.'); return l; };
   const pruneLinks=l=>{l.objectLinks=l.objectLinks.map(link=>({...link,instanceIds:link.instanceIds.filter(id=>l.instances.some(i=>i.id===id))})).filter(link=>link.instanceIds.length>=2);};
   switch (action.type) {
+    case 'asset.compose': {
+      const existing=p.assets.find(a=>a.id===d.asset.id);
+      const savedAsset=isParameter(d.asset)&&!d.asset.parameterId&&d.asset.parentId?{...d.asset,parentId:existing?.parentId||null}:d.asset;
+      let next=applyAction(p,{type:existing?'asset.update':'asset.add',data:savedAsset});
+      if(isParameter(d.asset)&&!d.asset.parameterId&&d.asset.parentId)next=applyAction(next,{type:'parameter.attach',data:{id:d.asset.id,parentId:d.asset.parentId,usageId:d.usageId,originalUsageId:d.originalUsageId}});
+      for(const id of d.removals||[]) {
+        if(!next.assets.some(a=>a.id===id&&a.parentId===d.asset.id&&isParameter(a)))throw Error('This parameter does not belong to the edited token.');
+        next=applyAction(next,{type:'asset.delete',data:{id}});
+      }
+      for(const attachment of d.attachments||[])next=applyAction(next,{type:'parameter.attach',data:{...attachment,parentId:d.asset.id}});
+      return next;
+    }
+    case 'parameter.attach': {
+      const definition=parameterDefinition(p,p.assets.find(a=>a.id===d.id));
+      const parent=p.assets.find(a=>a.id===d.parentId);
+      if(!definition || !isParameter(definition) || !parent || definition.id===parent.id || descendants(p,definition.id).some(a=>a.id===parent.id))throw Error('Choose a parameter and a different parent token.');
+      // Preserve old hierarchies when a formerly nested parameter is first reused.
+      if(definition.parentId) {
+        const original={...clone(definition),id:d.originalUsageId,parameterId:definition.id};
+        definition.parentId=null;
+        for(const child of p.assets.filter(a=>a.parentId===definition.id))child.parentId=original.id;
+        p.assets.push(original);
+      }
+      if(p.assets.some(a=>a.parentId===parent.id&&a.parameterId===definition.id))break;
+      p.assets.push({...clone(definition),id:d.usageId,parentId:parent.id,parameterId:definition.id});
+      break;
+    }
     case 'instance.batch': {
       let next=p;
       for(const update of d.updates||[])next=applyAction(next,{type:'instance.update',data:{levelId:d.levelId,...update}});
@@ -210,25 +285,31 @@ export function applyAction(input, action) {
     case 'tag.delete': p.tags = p.tags.filter(t=>t.id!==d.id); p.assets.forEach(a=>a.tags=a.tags.filter(id=>id!==d.id)); break;
     case 'asset.add': p.assets.push(d); break;
     case 'asset.update': {
-      const a = p.assets.find(a => a.id === d.id); if (!a) throw Error('Token no longer exists.');
+      const target = p.assets.find(a => a.id === d.id); if (!target) throw Error('Token no longer exists.');
+      const a=parameterDefinition(p,target);
+      if(target.parameterId && 'icon' in d && !['area','sight','cone','rectangle','cross'].includes(d.icon))throw Error('A reusable parameter needs a parameter shape.');
+      if(!target.parameterId && isParameter(a) && 'icon' in d && !['area','sight','cone','rectangle','cross'].includes(d.icon) && p.assets.some(b=>b.parameterId===a.id))throw Error('Detach all uses before changing this parameter into a token.');
       for (const key of ['name','icon','variant','kind','enabled','rule','tags','color','range','width','rotation','direction','autoFacing','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','parentId','exclusiveStates']) if (key in d) a[key] = d[key];
+      if(target.parameterId && 'parentId' in d){target.parentId=d.parentId;a.parentId=null;}
       if(d.exclusiveStates===true){const enabled=p.assets.filter(b=>isState(b)&&b.parentId===a.id&&b.enabled);for(const sibling of enabled.slice(0,-1))sibling.enabled=false;}
       if(d.enabled&&isState(a)&&p.assets.find(b=>b.id===a.parentId)?.exclusiveStates)for(const sibling of p.assets.filter(b=>isState(b)&&b.parentId===a.parentId&&b.id!==a.id))sibling.enabled=false;
       if('parentId' in d||'kind' in d)for(const l of p.levels)for(const i of l.instances)if(i.stateOverrides){const allowed=new Set(descendants(p,i.assetId).filter(isState).map(s=>s.id));i.stateOverrides=Object.fromEntries(Object.entries(i.stateOverrides).filter(([id])=>allowed.has(id)));}
       if('icon' in d && !('variant' in d))a.variant=defaultVariant(a.icon);
-      if(('icon' in d || 'kind' in d) && (isState(a)||['area','sight','cone','rectangle'].includes(a.icon)))for(const b of p.assets)if(b.overlapAssetIds)b.overlapAssetIds=b.overlapAssetIds.filter(id=>id!==a.id);
+      if(('icon' in d || 'kind' in d) && (isState(a)||['area','sight','cone','rectangle','cross'].includes(a.icon)))for(const b of p.assets)if(b.overlapAssetIds)b.overlapAssetIds=b.overlapAssetIds.filter(id=>id!==a.id);
       break;
     }
     case 'asset.delete': {
       const remove = new Set([d.id, ...descendants(p, d.id).map(a => a.id)]);
+      let previousSize;
+      do {previousSize=remove.size;for(const a of p.assets)if(a.parameterId&&remove.has(a.parameterId))for(const child of [a,...descendants(p,a.id)])remove.add(child.id);} while(remove.size!==previousSize);
       if(p.levels.some(l=>l.instances.some(i=>i.locked&&remove.has(i.assetId))))throw Error('Unlock the scenery placements before deleting this definition.');
       p.assets = p.assets.filter(a => !remove.has(a.id));
       for(const a of p.assets)if(a.overlapAssetIds)a.overlapAssetIds=a.overlapAssetIds.filter(id=>!remove.has(id));
       p.levels.forEach(l => {l.instances = l.instances.filter(i => !remove.has(i.assetId));for(const i of l.instances)if(i.stateOverrides)i.stateOverrides=Object.fromEntries(Object.entries(i.stateOverrides).filter(([id])=>!remove.has(id)));pruneLinks(l);}); break;
     }
     case 'tile.paint': {
-      const l = level(); for (const key of d.cells) { if (d.tile === 'empty') delete l.tiles[key]; else l.tiles[key] = d.tile; }
-      l.blockedLinks = l.blockedLinks.filter(key=>adjacentNodes(l,...key.split('|'))); break;
+      if(!['node','wall','empty'].includes(d.tile)&&!isFloor(d.tile))throw Error('Invalid level tile.');
+      paintLevelTiles(level(),d.cells,d.tile);break;
     }
     case 'link.update': {
       const l = level();
@@ -261,6 +342,7 @@ export function applyAction(input, action) {
     case 'project.replace': return validateProject(clone(d));
     default: throw Error('Unknown editor action.');
   }
+  syncParameters(p);
   return validateProject(p);
 }
 
@@ -270,6 +352,7 @@ export function effectContains(effect, dx, dy, rotation=0) {
   const forward=angle===0?-dy:angle===90?dx:angle===180?dy:-dx;
   const side=angle===0?dx:angle===90?dy:angle===180?-dx:-dy;
   if(effect.icon==='area')return Math.abs(dx)+Math.abs(dy)<=effect.range;
+  if(effect.icon==='cross')return (dx===0 || dy===0) && Math.abs(dx)+Math.abs(dy)<=effect.range;
   if(forward<1||forward>effect.range)return false;
   if(effect.icon==='sight')return side===0;
   const width=effect.width??3;
@@ -306,7 +389,7 @@ export function parameterOverlay(project,root,effect,instance,level) {
   const covered=new Set(cells.map(([x,y])=>`${x},${y}`));
   const count=level.instances.filter(i=>{
     const a=project.assets.find(a=>a.id===i.assetId);
-    return i.id!==instance.id && a && (effect.overlapAssetIds==null || effect.overlapAssetIds.includes(a.id)) && !isState(a) && !['area','sight','cone','rectangle'].includes(a.icon) && assetIsActive(project,a.id,i) && covered.has(`${i.x},${i.y}`);
+    return i.id!==instance.id && a && (effect.overlapAssetIds==null || effect.overlapAssetIds.includes(a.id)) && !isState(a) && !['area','sight','cone','rectangle','cross'].includes(a.icon) && assetIsActive(project,a.id,i) && covered.has(`${i.x},${i.y}`);
   }).length;
   return {cells,count,color:effect.overlapThreshold>0 && count>=effect.overlapThreshold ? (effect.overlapColor??'#edc47c') : effect.color};
 }

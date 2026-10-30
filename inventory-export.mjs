@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
-import { validateProject, clone, descendants, assetIsActive, nodesConnected, isState } from './public/model.js';
+import { validateProject, clone, descendants, assetIsActive, nodesConnected, isState, isFloor, nodeCells } from './public/model.js';
 import { column, writeWorkbook } from './xlsx.mjs';
 
 export const snapshotKinds = ['edit-design', 'playtest-start', 'playtest-current'];
 const snapshotLabels = { 'edit-design': 'Saved Edit design', 'playtest-start': 'Playtest starting layout', 'playtest-current': 'Current private playtest' };
-const parameter = a => !isState(a) && ['area', 'sight', 'cone', 'rectangle'].includes(a.icon);
+const parameter = a => !isState(a) && ['area', 'sight', 'cone', 'rectangle', 'cross'].includes(a.icon);
 const skills = ['Memory', 'Logic', 'Prediction', 'Tactics', 'Strategy', 'Perception', 'Management', 'Concentration', 'Reflexes', 'Timing', 'Precision', 'Endurance', 'Dexterity', 'Measurement'];
 const gameplayTypes = ['Stealth', 'Puzzle', 'Traversal', 'Combat', 'Exploration', 'Survival', 'Social', 'Other'];
 const kind = a => isState(a) ? 'State' : parameter(a) ? 'Parameter' : 'Object';
@@ -60,12 +60,13 @@ export function inventoryData(input, { snapshotKind = 'edit-design', room = '', 
   }
   const levels = project.levels.map((l, i) => {
     let edges = 0;
-    for (const [key, t] of Object.entries(l.tiles)) if (t === 'node') {
+    const nodes=nodeCells(l);
+    for (const key of nodes) {
       const [x, y] = key.split(',').map(Number);
       for (const to of [`${x + 1},${y}`, `${x},${y + 1}`]) if (nodesConnected(l, key, to)) edges++;
     }
     const nc = challenges.filter(c => c[1] === l.id).length;
-    return [l.id, i + 1, l.name, l.width, l.height, ...['node', 'floor', 'wall'].map(t => Object.values(l.tiles).filter(v => v === t).length), Object.keys(l.tiles).length, edges, l.blockedLinks.length, l.width * l.height, l.instances.length, nc, 'Incomplete', 'Incomplete', 'Incomplete', 'Incomplete', nc ? 'Check challenges' : 'Add challenges', snapshotLabels[snapshotKind], ''];
+    return [l.id, i + 1, l.name, l.width, l.height, nodes.length, ...['floor', 'wall'].map(t => Object.values(l.tiles).filter(v => t === 'floor' ? isFloor(v) : v === t).length), new Set([...Object.keys(l.tiles),...nodes]).size, edges, l.blockedLinks.length, l.width * l.height, l.instances.length, nc, 'Incomplete', 'Incomplete', 'Incomplete', 'Incomplete', nc ? 'Check challenges' : 'Add challenges', snapshotLabels[snapshotKind], ''];
   });
   return { project, atoms, elements, parts, placements, introductions, challenges, members, levels, recipes, source: { schemaVersion: 'workshop-inventory/2', projectVersion: project.version, projectTitle: project.title, room, revision, snapshotKind, exportedAt } };
 }

@@ -13,6 +13,7 @@ const sprites = {
   area: ['............','....cccc....','..cc....cc..','..c......c..','.c...cc...c.','.c..cccc..c.','.c..cccc..c.','.c...cc...c.','..c......c..','..cc....cc..','....cccc....','............'],
   sight: ['............','.....c......','....ccc.....','...ccccc....','..ccccccc...','.ccccccccc..','.....c......','.....c......','....ccc.....','....cwc.....','....ccc.....','............'],
   cone: ['............','.....c......','....ccc.....','....ccc.....','...ccccc....','...ccccc....','..ccccccc...','..ccccccc...','.ccccccccc..','............','............','............'],
+  cross: ['............','.....cc.....','.....cc.....','.....cc.....','.....cc.....','.cccccccccc.','.cccccccccc.','.....cc.....','.....cc.....','.....cc.....','.....cc.....','............'],
   rectangle: ['............','..cccccccc..','..c......c..','..c......c..','..c......c..','..c......c..','..c......c..','..c......c..','..cccccccc..','............','............','............'],
   lever: ['.........s..','........ss..','.......ss...','......ss....','.....ss.....','....bsb.....','....bbb.....','....bbb.....','..sssssss...','..sssssss...','............','............'],
   wall: ['............','.ssssssssss.','.slllsllls.','.ssssssssss.','.slslllslls.','.ssssssssss.','.slllsllls.','.ssssssssss.','............','............','............','............'],
@@ -21,12 +22,12 @@ const sprites = {
   bridge: ['............','............','.b........b.','.bbbbbbbbbb.','.bllllllllb.','.bbbbbbbbbb.','.bllllllllb.','.bbbbbbbbbb.','.b........b.','............','............','............'],
   noise: ['............','.......c....','....c...c...','..cc.c...c..','..cc.c...c..','..cc.c...c..','....c...c...','.......c....','............','............','............','............']
 };
-export const iconNames = { torch:'Torch',rock:'Rock',kid:'Kid',girl:'Girl',guard:'Guard',rat:'Rat',chandelier:'Chandelier',door:'Door',exit:'Exit',area:'Area of effect',sight:'Line Effect',cone:'Cone Effect',rectangle:'Rectangle Effect',lever:'Lever',wall:'Wall cube',key:'Key',fire:'Fire',bridge:'Bridge',noise:'Noise',cat:'Cat',sling:'Sling',dog:'Dog',crow:'Crow',lantern:'Lantern',chest:'Chest',barrel:'Barrel',crate:'Crate',rope:'Rope',ladder:'Ladder',trap:'Trap',bell:'Bell',square:'A · Square',triangle:'B · Triangle',hexagon:'C · Hexagon',circle:'D · Circle',diamond:'E · Diamond' };
+export const iconNames = { torch:'Torch',rock:'Rock',kid:'Kid',girl:'Girl',guard:'Guard',rat:'Rat',chandelier:'Chandelier',door:'Door',exit:'Exit',area:'Area of effect',sight:'Line Effect',cone:'Cone Effect',rectangle:'Rectangle Effect',cross:'Cross Effect',lever:'Lever',wall:'Wall cube',key:'Key',fire:'Fire',bridge:'Bridge',noise:'Noise',cat:'Cat',sling:'Sling',dog:'Dog',crow:'Crow',lantern:'Lantern',chest:'Chest',barrel:'Barrel',crate:'Crate',rope:'Rope',ladder:'Ladder',trap:'Trap',bell:'Bell',square:'A · Square',triangle:'B · Triangle',hexagon:'C · Hexagon',circle:'D · Circle',diamond:'E · Diamond' };
 export const iconVariants = {
   torch:{on:'On',off:'Off'}, rock:{intact:'Intact',broken:'Broken'},
   kid:{alive:'Alive',dead:'Dead'},girl:{alive:'Alive',dead:'Dead'},guard:{alive:'Alive',dead:'Dead'},rat:{alive:'Alive',dead:'Dead'},
   chandelier:{on:'On',off:'Off'},door:{closed:'Closed',open:'Open'},exit:{active:'Active',inactive:'Inactive'},
-  area:{default:'Default'},sight:{default:'Default'},cone:{default:'Default'},rectangle:{default:'Default'},lever:{off:'Off',on:'On'},wall:{intact:'Intact',broken:'Broken'},
+  area:{default:'Default'},sight:{default:'Default'},cone:{default:'Default'},rectangle:{default:'Default'},cross:{default:'Default'},lever:{off:'Off',on:'On'},wall:{intact:'Intact',broken:'Broken'},
   key:{available:'Available',used:'Used'},fire:{on:'On',off:'Off'},bridge:{intact:'Intact',broken:'Broken'},noise:{on:'On',off:'Off'},
   cat:{sitting:'Sitting',prowling:'Prowling'},sling:{loaded:'Loaded',empty:'Empty'},dog:{standing:'Standing',sitting:'Sitting'},crow:{perched:'Perched',flying:'Flying'},lantern:{on:'Lit',off:'Unlit'},chest:{closed:'Closed',open:'Open'},barrel:{intact:'Intact',broken:'Broken'},crate:{intact:'Intact',broken:'Broken'},rope:{coiled:'Coiled',hanging:'Hanging'},ladder:{intact:'Intact',broken:'Broken'},trap:{armed:'Armed',sprung:'Sprung'},bell:{idle:'Idle',ringing:'Ringing'},
   square:{filled:'Filled',outline:'Outline'},triangle:{filled:'Filled',outline:'Outline'},hexagon:{filled:'Filled',outline:'Outline'},circle:{filled:'Filled',outline:'Outline'},diamond:{filled:'Filled',outline:'Outline'}

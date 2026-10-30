@@ -1,4 +1,4 @@
-import {clone,uid} from './model.js';
+import {clone,uid,hasNode} from './model.js';
 import {copyHierarchy,copyLevel} from './editing.js';
 export function manipulation({getProject,getLevel,getSelected,setSelected,dispatch,render,toast,isPlay,snap,esc,collectInventory}){
   let selection=new Set(),drag=null,suppress=0,clipboard=null;
@@ -8,14 +8,14 @@ export function manipulation({getProject,getLevel,getSelected,setSelected,dispat
   const move=(dx,dy)=>{
     const items=selectedItems();if(!items.length)return;
     if(items.some(i=>i.locked))return toast('Unlock the selected scenery before moving it.');
-    if(snap()&&items.some(i=>getLevel().tiles[`${i.x+dx},${i.y+dy}`]!=='node'))return toast('Snap to Nodes requires a node for every selected piece.');
+    if(snap()&&items.some(i=>!hasNode(getLevel(),`${i.x+dx},${i.y+dy}`)))return toast('Snap to Nodes requires a node for every selected piece.');
     dispatch({type:'instance.batch',data:{levelId:getLevel().id,updates:items.map(i=>({id:i.id,x:i.x+dx,y:i.y+dy}))}});
   };
   const duplicate=(originals=selectedItems(),links=getLevel().objectLinks)=>{
     if(!originals.length)return;
     let dx=originals.every(i=>i.x+1<getLevel().width)?1:originals.every(i=>i.x>0)?-1:0;
-    if(snap()&&originals.some(i=>getLevel().tiles[`${i.x+dx},${i.y}`]!=='node'))dx=0;
-    if(snap()&&originals.some(i=>getLevel().tiles[`${i.x+dx},${i.y}`]!=='node'))return toast('Snap to Nodes requires a node for every copied piece.');
+    if(snap()&&originals.some(i=>!hasNode(getLevel(),`${i.x+dx},${i.y}`)))dx=0;
+    if(snap()&&originals.some(i=>!hasNode(getLevel(),`${i.x+dx},${i.y}`)))return toast('Snap to Nodes requires a node for every copied piece.');
     const additions=originals.map(i=>({...clone(i),id:uid(),x:i.x+dx,locked:false}));
     const ids=new Map(originals.map((i,index)=>[i.id,additions[index].id]));
     const copiedLinks=links.map(link=>({...clone(link),id:uid(),instanceIds:link.instanceIds.filter(id=>ids.has(id)).map(id=>ids.get(id))})).filter(link=>link.instanceIds.length>=2);

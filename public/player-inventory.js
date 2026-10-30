@@ -1,4 +1,4 @@
-import {applyAction,clone,isState,uid} from './model.js';
+import {applyAction,clone,isState,uid,hasNode} from './model.js';
 
 // Kept outside the shared project: a backpack belongs to one private playtest.
 export function collectItems(project, inventory, levelId, payload) {
@@ -43,7 +43,7 @@ export function adjustStack(inventory,id,delta) {
 export function releaseItem(project, inventory, levelId, id, position, snap=false) {
   const stack=inventory.find(i=>i.id===id),level=project.levels.find(l=>l.id===levelId);
   if(!stack||!level)throw Error('This inventory object is no longer available.');
-  if(snap&&level.tiles[`${position.x},${position.y}`]!=='node')throw Error('Snap to Nodes is on. Choose an existing node.');
+  if(snap&&!hasNode(level,`${position.x},${position.y}`))throw Error('Snap to Nodes is on. Choose an existing node.');
   const item={...clone(stack.items[0]),...position};
   if(stack.count===0)item.id=uid();
   const next=applyAction(project,{type:'instance.add',data:{levelId,instance:item}});
