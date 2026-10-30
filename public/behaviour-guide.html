@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Behaviour Guide · Plague Tale GO Workshop</title>
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('workshop-theme')==='dark'?'dark':'light';}catch{}</script>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/behaviour-guide.css">
+</head>
+<body class="behaviour-guide-page">
+  <a class="guide-skip" href="#guide-start">Skip to the first example</a>
+  <main class="guide-shell" id="top">
+    <header class="guide-header">
+      <p class="guide-eyebrow">PLAGUE TALE GO · THE WORKSHOP</p>
+      <h1>Behaviour Guide</h1>
+      <p class="guide-intro">Give your pieces small jobs: move, open a door, spread, or react when someone uses them.</p>
+      <p>Keep this guide beside your workshop tab. Try one behaviour at a time, then combine them.</p>
+      <div class="guide-key"><strong>The first thing to check:</strong> some behaviours need an area to work in. Those belong to a <strong>parameter</strong>, such as Area of effect or Self, rather than directly to an object.</div>
+    </header>
+
+    <nav class="guide-nav" aria-label="Guide topics">
+      <a href="#guide-start">First example</a><a href="#guide-where">Where to attach</a><a href="#guide-targets">Set Move Target</a><a href="#guide-links">Linked Objects</a><a href="#guide-reference">All behaviours</a><a href="#guide-effects">Effect actions</a><a href="#guide-order">Turns &amp; order</a><a href="#guide-help">Something stuck?</a>
+    </nav>
+
+    <section class="guide-section" id="guide-start" aria-labelledby="start-title">
+      <p class="guide-eyebrow">START SMALL</p><h2 id="start-title">Make one guard move</h2>
+      <ol class="guide-steps">
+        <li>In <strong>Edit</strong>, paint a few connected path nodes. Create a Guard token if you need one, then place it on a node.</li>
+        <li>Select the Guard in the library. In its inspector, choose <strong>Behaviours → Add behaviour → Move To</strong>. Set <strong>Free nodes per turn</strong> to 1 and <strong>Move towards</strong> to <strong>Current Move Target</strong>. Save behaviours.</li>
+        <li>Select the <strong>placed Guard on the canvas</strong>. In its inspector, choose <strong>Set move target → Custom position</strong>. Enter the column and row of a free node farther along the path, then set the target.</li>
+        <li>Choose <strong>Playtest → Start turn 1</strong>. The Guard takes one step. <strong>Next turn</strong> takes another; <strong>Previous turn</strong> goes back.</li>
+      </ol>
+      <p class="guide-note">A target is the destination. Move To is the instruction to travel there. You need both for this example.</p>
+    </section>
+
+    <section class="guide-section" id="guide-where" aria-labelledby="where-title">
+      <p class="guide-eyebrow">WHERE TO PUT IT</p><h2 id="where-title">Object, state, or parameter?</h2>
+      <dl class="guide-definitions">
+        <div><dt>Token / object</dt><dd>A reusable building block in the library: Guard, Player, Lever… A <strong>placement</strong> is one copy on the canvas. Editing its shared behaviours changes every copy; a placed piece can have its own state switches and move target.</dd></div>
+        <div><dt>State</dt><dd>A folder inside a token, such as Alive or Dead. A behaviour placed inside Alive works only while Alive is enabled for that piece. It acts through the placed parent object.</dd></div>
+        <div><dt>Parameter / effect area</dt><dd>A shape attached to a token: <strong>Area of effect, Self, Line Effect, Cone Effect, Rectangle Effect, or Cross Effect</strong>. It tells an area behaviour where to look. <strong>Self</strong> covers only the occupied cell, making it useful for overlaps.</dd></div>
+      </dl>
+      <div class="guide-table-wrap" tabindex="0" role="region" aria-label="Behaviour availability table">
+        <table><caption>Use this table when a behaviour is missing from your dropdown.</caption><thead><tr><th scope="col">Behaviour</th><th scope="col">Attach it to</th><th scope="col">When it works</th></tr></thead><tbody>
+          <tr><th scope="row"><a href="#behaviour-expand">Expand</a></th><td><span class="guide-badge">Parameter only</span></td><td>At the start of a turn</td></tr>
+          <tr><th scope="row"><a href="#behaviour-apply">Apply Effect</a></th><td><span class="guide-badge">Parameter only</span></td><td>At the start of a turn</td></tr>
+          <tr><th scope="row"><a href="#behaviour-block">Block Node</a></th><td><span class="guide-badge">Parameter only</span></td><td>Continuously, while active</td></tr>
+          <tr><th scope="row"><a href="#behaviour-use">Use and Apply Effect</a></th><td><span class="guide-badge">Parameter only</span></td><td>When you click a hand badge</td></tr>
+          <tr><th scope="row"><a href="#behaviour-move">Move To</a></th><td>Token, state, or parameter</td><td>At the start of a turn</td></tr>
+          <tr><th scope="row"><a href="#behaviour-teleport">Teleport</a></th><td>Token, state, or parameter</td><td>At the start of a turn</td></tr>
+          <tr><th scope="row"><a href="#behaviour-advance">Advance Turn On Event</a></th><td>Token, state, or parameter</td><td>After a chosen user action</td></tr>
+        </tbody></table>
+      </div>
+      <h3>Adding an area behaviour</h3>
+      <ol>
+        <li>Open the library’s <strong>Parameters</strong> tab and use <strong>+</strong> to create a shape. For a nearby interaction, try Area of effect with radius 1.</li>
+        <li>Attach it to the object: drag the parameter onto the object’s <strong>library row</strong>, or choose that object in the parameter editor’s <strong>Nest inside</strong> field.</li>
+        <li>Select the <strong>parameter</strong> in the hierarchy, then choose <strong>Behaviours → Add behaviour</strong>. All seven behaviours are available there.</li>
+      </ol>
+      <div class="guide-example"><strong>Example hierarchy</strong><ul class="guide-hierarchy"><li>Player <span>token on the canvas</span><ul><li>Alive <span>optional state</span><ul><li>Reach <span>Area of effect parameter · put Use here</span></li></ul></li></ul></li></ul><p>Turning Alive off also turns off Use inside Reach. A reusable parameter’s settings and behaviours are shared by every object it is attached to.</p></div>
+      <p><strong>“Parent object”</strong> in the controls means the placed object carrying that behaviour, including behaviours nested inside its states or parameters.</p>
+    </section>
+
+    <section class="guide-section" id="guide-targets" aria-labelledby="targets-title">
+      <p class="guide-eyebrow">THE DESTINATION IS NOT THE JOURNEY</p><h2 id="targets-title">Set Move Target, step by step</h2>
+      <p>Think of each piece as carrying a little destination note. <strong>Set Move Target rewrites that note.</strong> It does not move the piece by itself.</p>
+      <div class="guide-table-wrap" tabindex="0" role="region" aria-label="Movement actions compared"><table><thead><tr><th scope="col">Instruction</th><th scope="col">What changes?</th><th scope="col">Example</th></tr></thead><tbody>
+        <tr><th scope="row">Set Move Target</th><td>The destination a piece remembers</td><td>“Guard, head toward that noise.”</td></tr>
+        <tr><th scope="row">Move To</th><td>The piece’s position, a few free nodes at a time</td><td>“Take one step toward your destination each turn.”</td></tr>
+        <tr><th scope="row">Teleport</th><td>The piece’s position in one jump</td><td>“Arrive at the portal’s destination.”</td></tr>
+      </tbody></table></div>
+      <h3>Example: a noise attracts guards</h3>
+      <ol class="guide-steps">
+        <li>Attach an <strong>Area of effect</strong> parameter to a Noise token. Put it where the noise can reach the guards.</li>
+        <li>On that parameter, add <strong>Apply Effect</strong>. Choose <strong>Eligible objects → Selected object types in area</strong>, tick Guard, and choose <strong>Action → Set Move Target</strong>.</li>
+        <li>Set <strong>Move target → Self (the object carrying this effect)</strong>. Here, Self means the <strong>Noise source</strong>. Guards caught by its area remember the Noise source as their destination.</li>
+        <li>On the <strong>Guard token</strong>, add <strong>Move To → Current Move Target</strong>, with 1 free node per turn.</li>
+        <li>Open <strong>Behaviour resolution order</strong> in Manipulate &amp; Organize. Put the Noise’s Apply Effect <strong>before</strong> the Guard’s Move To. Test it with Start turn 1.</li>
+      </ol>
+      <p>The Guard travels along a free, connected path. If the Noise object occupies its destination node, the Guard approaches a neighbouring free node. If there is no available route, it stays put.</p>
+      <h3>The three destination choices</h3>
+      <ul>
+        <li><strong>Self, inside an effect:</strong> the object carrying the effect, such as the Noise source above.</li>
+        <li><strong>Custom position:</strong> a fixed column and row. Good for “go to this spot.”</li>
+        <li><strong>Other object in the canvas:</strong> a particular placed object. Its current position is followed, so this is useful for chasing a moving Player.</li>
+      </ul>
+      <p class="guide-note"><strong>Two other uses of “Self”:</strong> the Self <em>parameter</em> means “this occupied cell.” In a placed piece’s own inspector → Set move target, Self means “stay here.” In Teleport’s Object to teleport field, Self means the parent placement.</p>
+      <p><strong>To check a destination:</strong> select the placed Guard and find <strong>Move target</strong> in its inspector. You can also use <strong>Set move target</strong> there to give one piece a starting destination by hand.</p>
+    </section>
+
+    <section class="guide-section" id="guide-links" aria-labelledby="links-title">
+      <p class="guide-eyebrow">CONNECT A LEVER TO A DOOR</p><h2 id="links-title">Finding and using Linked Objects</h2>
+      <p>An object link names a relationship between <strong>specific pieces on the canvas</strong>. A Lever can be linked to a Door across the room. Creating the link gives behaviours a way to find that Door; you still choose what the behaviour does to it.</p>
+      <ol class="guide-steps">
+        <li>In <strong>Edit</strong>, place a Lever and a Door on the canvas.</li>
+        <li>Choose <strong>Link objects (L)</strong> in the canvas toolbar, or press <kbd>L</kbd>. Click the Lever and Door to include them.</li>
+        <li>Click <strong>Create link</strong>, give it a name such as “Door control,” and save the link.</li>
+        <li>To find it later, select either piece and look for <strong>LINKS</strong> near the bottom of its inspector, below the patrol colors. Click the link name to inspect it.</li>
+      </ol>
+      <p class="guide-note">Can’t see the connecting line? Select one linked piece, or turn on <strong>Show all parameters</strong> with the eye button in the small canvas toolbar. Linking objects is separate from nesting tokens in the library and from connecting path nodes for movement.</p>
+      <h3>Where the Linked Objects option is hiding</h3>
+      <div class="guide-table-wrap" tabindex="0" role="region" aria-label="Linked target dropdowns"><table><thead><tr><th scope="col">In this behaviour…</th><th scope="col">Open this dropdown</th><th scope="col">Whose links are used?</th></tr></thead><tbody>
+        <tr><th scope="row">Apply Effect</th><td><strong>Eligible objects → Linked Object(s)</strong></td><td>The parent placement’s links</td></tr>
+        <tr><th scope="row">Use and Apply Effect</th><td><strong>Apply to → Clicked object’s Linked Object(s)</strong></td><td>The object whose hand you clicked</td></tr>
+        <tr><th scope="row">Teleport</th><td><strong>Teleport destination → Linked object</strong></td><td>The object being teleported</td></tr>
+      </tbody></table></div>
+      <p>Linked targets can be outside the effect area’s range. Effect blockers still apply; Apply Effect also respects its optional wall occlusion. Only direct link members are used, not a chain through other links.</p>
+      <h3>Try it: click a lever to open and close its door</h3>
+      <ol>
+        <li>Give the Door <strong>Closed</strong> and <strong>Open</strong> states. In the Door inspector, enable <strong>Mutually exclusive states</strong> and turn Closed on.</li>
+        <li>Attach an Area of effect parameter to the <strong>Player</strong>. Select that parameter and add <strong>Use and Apply Effect</strong>.</li>
+        <li>In <strong>Usable objects</strong>, choose selected object types and tick <strong>Lever</strong>. In <strong>Apply to</strong>, choose <strong>Clicked object’s Linked Object(s)</strong>.</li>
+        <li>Choose <strong>Action → Switch State</strong>, select or type <strong>Open</strong>, and set <strong>Switch → Toggle mutually exclusive states</strong>. Save behaviours.</li>
+        <li>In Playtest, move the Player close enough to the Lever. Click its little <strong>hand badge</strong>: the linked Door opens. Click again to close it. Clicking the Lever’s body still selects it.</li>
+      </ol>
+    </section>
+
+    <section class="guide-section" id="guide-reference" aria-labelledby="reference-title">
+      <p class="guide-eyebrow">PICK THE JOB YOU NEED</p><h2 id="reference-title">The seven behaviours</h2><p>Open a card for the important choices and a small example.</p>
+      <details class="guide-behaviour" id="behaviour-expand"><summary>Expand <span class="guide-badge">Parameter only · Turn start</span></summary><div>
+        <p><strong>“Make more copies here.”</strong> Copies the placed parent and its hierarchy onto highlighted path nodes. Try spreading a rat swarm from a small Area of effect.</p><p>It normally skips nodes that already contain that object type. <strong>Allow copies where this object type is already present</strong> permits stacking instead. New copies first act next turn. Expansion stops with an error if the level would exceed 1,000 pieces.</p>
+      </div></details>
+      <details class="guide-behaviour" id="behaviour-apply"><summary>Apply Effect <span class="guide-badge">Parameter only · Turn start</span></summary><div>
+        <p><strong>“Find these objects and do this to them.”</strong> First choose <strong>Eligible objects</strong>: any type in the area, selected library types, or Linked Object(s). Then choose an <a href="#guide-effects">Action</a>.</p><p>Example: an Area of effect around a fire sends matching rats to the Graveyard. An empty selected-types list affects nothing. The parent itself and parameter markers are excluded from area targets.</p>
+      </div></details>
+      <details class="guide-behaviour" id="behaviour-block"><summary>Block Node <span class="guide-badge">Parameter only · Always while active</span></summary><div>
+        <p><strong>“These nodes are off limits.”</strong> Choose <strong>Block for</strong> all objects or selected types. <strong>Movement only</strong> blocks travel; <strong>Movement and other effects</strong> also makes the nodes act like walls for effects cast by those chosen types, stopping areas on and beyond them.</p><p><strong>Exclude Self</strong> lets the parent ignore its own blocker. Other copies are still blocked, and other blockers can still affect the parent. Only highlighted cells containing path nodes are blocked.</p><p>Example: put the blocker under a Door’s Closed state. Opening that Door disables that blocking branch immediately, without waiting for a turn.</p>
+      </div></details>
+      <details class="guide-behaviour" id="behaviour-use"><summary>Use and Apply Effect <span class="guide-badge">Parameter only · Hand click</span></summary><div>
+        <p><strong>“Let the player interact with something nearby.”</strong> Choose <strong>Usable objects</strong>, decide whether <strong>Apply to</strong> means the clicked object or its linked objects, then choose an Action.</p><p>A small hand appears on usable objects in range during Playtest. Click the hand to use; click the body to select. If several actions or stacked usable pieces are available, a choice list appears. Range and active states are checked again when you click.</p><p>Use does not run by itself at turn start. Add Advance Turn On Event with <strong>Use</strong> selected if using something should also take a turn. The <a href="#guide-links">lever-and-door example</a> shows the full setup.</p>
+      </div></details>
+      <details class="guide-behaviour" id="behaviour-move"><summary>Move To <span class="guide-badge">Token, state or parameter · Turn start</span></summary><div>
+        <p><strong>“Walk a few steps toward a destination.”</strong> <strong>Free nodes per turn</strong> is the maximum number of connected, unoccupied nodes to travel. A missing destination or unavailable route means no movement. Broken connections, active objects, Block Node, and scenery locks can stop it.</p><p>Choose <strong>Current Move Target</strong> for a destination remembered by the piece. Use <a href="#guide-targets">Set Move Target</a> or its placement inspector to supply that destination.</p><p>For a patrol, choose <strong>Patrol Start → End → Start</strong> or the reverse, then select a saved patrol or match the piece’s patrol color dot. The piece joins the chosen endpoint if needed, follows the saved route, and turns back at each end. This patrol choice uses the patrol rather than Current Move Target.</p>
+      </div></details>
+      <details class="guide-behaviour" id="behaviour-teleport"><summary>Teleport <span class="guide-badge">Token, state or parameter · Turn start</span></summary><div>
+        <p><strong>“Jump straight to a destination.”</strong> Choose <strong>Object to teleport</strong>: Self means the parent placement, or select another canvas piece. Then choose a specific column/row, a selected canvas object, or a linked object as the destination.</p><p>For Linked object, choose a destination directly linked to the piece being teleported, or leave the choice on the first linked object in saved link order. Arriving in the destination object’s occupied cell is allowed. Missing destinations, walls, out-of-bounds cells, movement blockers, and scenery locks can prevent the jump.</p><p>Teleport is also an Action inside Apply Effect and Use. There, the affected objects are the ones teleported.</p>
+      </div></details>
+      <details class="guide-behaviour" id="behaviour-advance"><summary>Advance Turn On Event <span class="guide-badge">Token, state or parameter · User action</span></summary><div>
+        <p><strong>“This action spends a turn.”</strong> Tick one or more events for the parent: <strong>Use</strong>, <strong>Object Moved</strong>, <strong>Object Added To Inventory</strong>, or <strong>Object Dropped from Inventory</strong>.</p><p>Moved includes a successful user drag/drop or arrow-key move. Inventory events mean manual backpack collection or placement. Use counts for both the acting parent and the clicked usable object. One user action advances at most one turn, even if it matches several events.</p><p>Rotation, failed moves, Graveyard transfers, and initial inventory loading do not spend a turn. Automated turn actions do not start another turn. Previous also undoes the user action that triggered the turn.</p>
+      </div></details>
+    </section>
+
+    <section class="guide-section" id="guide-effects" aria-labelledby="effects-title">
+      <p class="guide-eyebrow">WHAT HAPPENS TO THE TARGET?</p><h2 id="effects-title">The Action inside Apply Effect or Use</h2>
+      <p>The <strong>behaviour</strong> decides when and whom. Its <strong>Action</strong> decides what happens to the affected object.</p>
+      <div class="guide-table-wrap" tabindex="0" role="region" aria-label="Effect actions explained"><table><thead><tr><th scope="col">Action</th><th scope="col">Plain-language meaning</th><th scope="col">What to choose</th></tr></thead><tbody>
+        <tr><th scope="row">Switch State</th><td>“Become Open, Lit, Dead…”</td><td>Select a state from suggestions, or type its name to match a state in each affected object. Enable or disable it. Only that placement changes.</td></tr>
+        <tr><th scope="row">Send to Graveyard</th><td>“Remove this piece from play.”</td><td>Choose which objects the behaviour affects. Their individual states are preserved; drag them back from the Graveyard to restore them.</td></tr>
+        <tr><th scope="row">Set Move Target</th><td>“Remember this destination.”</td><td>Self, a fixed position, or another canvas object. Pair it with Move To → Current Move Target. <a href="#guide-targets">See the full example.</a></td></tr>
+        <tr><th scope="row">Flush</th><td>“Remove this continuous chain.”</td><td>A caught object starts a chain through horizontally/vertically touching active pieces of the same type, including stacks. Gaps, other types and effect blockers stop it.</td></tr>
+        <tr><th scope="row">Teleport</th><td>“Move this piece there in one jump.”</td><td>A specific cell, selected canvas object, or linked destination. No Move To behaviour is needed.</td></tr>
+      </tbody></table></div>
+      <h3>Opening and closing with Toggle</h3>
+      <p>For states such as Open and Closed, enable <strong>Mutually exclusive states</strong> on their parent token. In a <strong>Use</strong> Switch State action, choose <strong>Switch → Toggle mutually exclusive states</strong>. Repeated uses alternate two states, or cycle a larger sibling group in library order. The chosen state identifies the group and is enabled first if none is active. Non-exclusive groups and single-state groups are skipped.</p>
+      <h3>Choosing Flush reach</h3>
+      <p><strong>Max flush reach → Infinite</strong> follows the chain until it ends. <strong>Limited</strong> counts continuous cells from each initially caught cell, including that cell:</p>
+      <ul><li><strong>1:</strong> only the initially caught cells.</li><li><strong>2:</strong> those cells plus one adjacent step along the chain.</li><li><strong>3:</strong> up to two adjacent steps, and so on.</li></ul>
+      <p>For a line of rats A–B–C, if only A is initially caught, reach 2 removes A and B. A gap before D keeps D safe. Stacked pieces share a cell; each branch follows the same reach limit. Flush works through touching pieces even where there are no path nodes.</p>
+    </section>
+
+    <section class="guide-section" id="guide-order" aria-labelledby="order-title">
+      <p class="guide-eyebrow">PUT THE PIECES TOGETHER</p><h2 id="order-title">Turns, states, and resolution order</h2>
+      <p>Set up behaviours in <strong>Edit</strong>, save them, then choose <strong>Playtest</strong>. The board is a private copy. It starts at <strong>Ready to start</strong>; <strong>Start turn 1</strong> runs turn-start actions. Blockers are already live, and Use waits for a hand click.</p>
+      <p>Open <strong>Behaviour resolution order</strong> in the collapsible <strong>Manipulate &amp; Organize</strong> panel, use the canvas <strong>⇅</strong> button, or choose <strong>Resolution order</strong> in the inspector. Move actions up or down with the arrows.</p>
+      <p><strong>Order changes the result.</strong> A Noise that sets targets before Guards move lets them react that turn. Switching Alive off before a Move To nested inside Alive stops that move. Actions read the states and positions left by earlier actions. Newly expanded copies wait until the next turn.</p>
+      <p>Use <strong>Resolution log</strong> to see what ran and the affected counts. <strong>Previous turn</strong> restores positions, states, targets and backpack contents. Save a sequence before leaving Playtest if you want to keep it.</p>
+      <p class="guide-note"><strong>Starting with items?</strong> Use <strong>Level settings → Player’s starting inventory</strong>. Quantity 0 means an unlimited stack. Starting items load before turn 0 and do not trigger Advance Turn On Event. Reset restores them; later manual inventory transfers can spend a turn.</p>
+    </section>
+
+    <section class="guide-section" id="guide-help" aria-labelledby="help-title">
+      <p class="guide-eyebrow">QUICK CHECKS</p><h2 id="help-title">Something isn’t happening?</h2>
+      <dl class="guide-troubleshooting">
+        <div><dt>“The behaviour isn’t in the list.”</dt><dd>Check the <a href="#guide-where">availability table</a>. Select the attached parameter, rather than its parent token, for Expand, Apply Effect, Block Node, or Use.</dd></div>
+        <div><dt>“My guard has a target but won’t move.”</dt><dd>Add Move To and choose Current Move Target. Check connected free nodes, Block Node, broken connections, and scenery locks. Then start or advance a turn.</dd></div>
+        <div><dt>“There’s no hand on the lever.”</dt><dd>Use belongs on a parameter. Attach that parameter to the acting object, choose Lever as usable, enter Playtest, and bring the Lever into range. Check enabled states and blockers.</dd></div>
+        <div><dt>“The lever is in range, but the door doesn’t open.”</dt><dd>Link the placed Lever and Door. In Use, choose Apply to → Clicked object’s Linked Object(s), then Switch State with an existing Door state.</dd></div>
+        <div><dt>“Toggle does nothing.”</dt><dd>It is a Use Switch State option. The chosen state needs at least one sibling, and their parent needs Mutually exclusive states enabled.</dd></div>
+        <div><dt>“Nothing is eligible.”</dt><dd>Tick at least one object type in a selected-types list. A chosen type applies to its placed copies; a selected canvas object means one particular piece.</dd></div>
+        <div><dt>“A whole branch has stopped.”</dt><dd>An inactive state suppresses all behaviours nested inside it. Inspect the placed piece’s state switches, not just the library defaults.</dd></div>
+        <div><dt>“The controls disappeared in Projector view.”</dt><dd>Use Show / hide at the top right. Enable Tools or Parameters / Patrols / Resolution Order. Inventory and Graveyard have their own switches.</dd></div>
+      </dl>
+      <p class="guide-finish">Try one change, observe one turn, then adjust. <a href="#top">Back to the top ↑</a></p>
+    </section>
+  </main>
+</body>
+</html>

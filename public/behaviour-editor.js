@@ -39,7 +39,7 @@ export function behaviourEditor({getProject,getLevel,isPlay,dispatch,showDialog,
   function edit(assigned){
     if(isPlay())return;
     const asset=parameterDefinition(getProject(),assigned),draft=clone(asset.behaviours||[]);
-    showDialog(modal(`Behaviours · ${asset.name}`,`<form id="behaviour-form"><p>Configure turn actions, passive blockers, clickable Use actions and turn events. Behaviours inside inactive states stay silent. Effect settings update every attached use.</p><div id="behaviour-cards"></div><button type="button" id="add-behaviour">＋ Add behaviour</button><p id="behaviour-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save behaviours</button></div></form>`));
+    showDialog(modal(`Behaviours · ${asset.name}`,`<form id="behaviour-form"><p>Configure turn actions, passive blockers, clickable Use actions and turn events. Behaviours inside inactive states stay silent. Effect settings update every attached use.</p><p><a class="behaviour-guide-link" href="/behaviour-guide.html" target="_blank" rel="noopener">Open the Behaviour Guide ↗ <span>(new tab)</span></a></p><div id="behaviour-cards"></div><button type="button" id="add-behaviour">＋ Add behaviour</button><p id="behaviour-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save behaviours</button></div></form>`));
     const read=()=>{
       for(const card of $('#behaviour-cards').querySelectorAll('[data-behaviour]')){
         const b=draft.find(b=>b.id===card.dataset.behaviour),value=key=>card.querySelector(`[data-b="${key}"]`)?.value;

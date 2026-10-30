@@ -107,6 +107,8 @@ Overlays are visual rulers and define the cells used by effect behaviours. Enabl
 
 ### Playtest turns and behaviours
 
+For a student-friendly walkthrough, open the **Behaviour Guide** from the Field guide’s **Assign behaviours** section or the behaviour editor. It opens in a separate tab and covers where to attach each behaviour, Set Move Target, Linked Objects, worked examples and troubleshooting. The standalone page is served at `/behaviour-guide.html` ([source](public/behaviour-guide.html)).
+
 Select a token, state, or parameter in Edit mode and choose **Behaviours** in its inspector. **Move To**, **Teleport**, and **Advance Turn On Event** can be assigned to any of these; **Expand**, **Apply Effect**, **Block Node**, and **Use and Apply Effect** belong to an effect parameter. Parameter behaviours are shared by all attached uses. Place an effect under a state to gate it: inactive states and all their descendants do not act. A behaviour assigned to a state acts on the placed parent object while that state is active.
 
 The horizontal toolbar appears in **Playtest**. **Start turn 1** resolves the first turn; **Next turn** resolves another. **Previous turn** restores the previous snapshot, including every level, object position, individual state, current move target, patrol direction, inventory, and graveyard. Next replays an existing future snapshot; changing pieces or settings after going back discards that future and resolves a new branch. Manual changes are captured when you navigate or save. Turn 0 is the layout before the first turn.
