@@ -1,4 +1,4 @@
-import {clone,uid,validateProject,descendants,assetIsActive,isState,isParameter,parameterOverlay,hasNode,nodesConnected,wallBlocks} from './model.js';
+import {clone,uid,validateProject,descendants,assetIsActive,isState,isParameter,parameterOverlay,hasNode,nodesConnected,wallBlocks,stateEnabled} from './model.js';
 import {eligibilityMode} from './behaviour-schema.js';
 import {blockedNodes,effectOverlay,effectCanReach,placementBehaviours} from './behaviour-areas.js';
 
@@ -27,10 +27,16 @@ function pathTo(level,start,goal,occupied) {
 function setState(project,instance,behaviour) {
   const states=descendants(project,instance.assetId).filter(isState);
   // IDs select a precise state. A name/key matches the target's own hierarchy.
-  const state=states.find(s=>s.id===behaviour.stateKey)||states.find(s=>s.name.toLowerCase()===behaviour.stateKey.toLowerCase());
+  let state=states.find(s=>s.id===behaviour.stateKey)||states.find(s=>s.name.toLowerCase()===behaviour.stateKey.toLowerCase());
   if(!state)return false;
+  if(behaviour.stateToggle){
+    const siblings=states.filter(s=>s.parentId===state.parentId);
+    if(!project.assets.find(a=>a.id===state.parentId)?.exclusiveStates||siblings.length<2)return false;
+    const current=siblings.findIndex(s=>stateEnabled(project,s,instance));
+    if(current>=0)state=siblings[(current+1)%siblings.length];
+  }
   instance.stateOverrides??={};
-  if(behaviour.stateEnabled){
+  if(behaviour.stateToggle||behaviour.stateEnabled){
     let ancestor=project.assets.find(a=>a.id===state.parentId);
     const enable=s=>{
       if(project.assets.find(a=>a.id===s.parentId)?.exclusiveStates)for(const sibling of states.filter(a=>a.parentId===s.parentId))instance.stateOverrides[sibling.id]=false;

@@ -26,7 +26,7 @@ export function behaviourEditor({getProject,getLevel,isPlay,dispatch,showDialog,
     const value=key=>root.querySelector(`[data-b="${key}"]`)?.value,type=value('destinationType');
     return type==='position'?{type,x:Number(value('destinationX')??1)-1,y:Number(value('destinationY')??1)-1}:{type,id:value('destinationId')||(type==='linked'?null:'')};
   };
-  const actionFields=b=>field('Action','action',effectActions,b.action)+(b.action==='switchState'?`<div class="field"><label>Desired state or key<input data-b="stateKey" list="behaviour-states" maxlength="100" value="${esc(b.stateKey)}" required></label><small>Choose a state ID or type a state name to match each target’s hierarchy. Unavailable states are skipped.</small></div>${field('Switch','stateEnabled',{true:'Enable state',false:'Disable state'},String(b.stateEnabled))}`:b.action==='setMoveTarget'?targetFields(b.moveTarget):b.action==='teleport'?destinationFields(b.destination):b.action==='flush'?'<p>Flush continues through touching active instances of the caught object types, beyond the initial area. Gaps and effect-blocked nodes stop the chain.</p>':'');
+  const actionFields=b=>field('Action','action',effectActions,b.action)+(b.action==='switchState'?`<div class="field"><label>Desired state or key<input data-b="stateKey" list="behaviour-states" maxlength="100" value="${esc(b.stateKey)}" required></label><small>Choose a state ID or type a state name to match each target’s hierarchy. Unavailable states are skipped.</small></div>${field('Switch','stateEnabled',b.type==='useEffect'?{true:'Enable state',false:'Disable state',toggle:'Toggle mutually exclusive states'}:{true:'Enable state',false:'Disable state'},b.stateToggle?'toggle':String(b.stateEnabled))}${b.type==='useEffect'?'<small>Toggle cycles through the selected state’s mutually exclusive siblings in their saved order. With two states, each Use switches to the other. The chosen state identifies the group and is enabled first if none is active. Non-exclusive groups are skipped.</small>':''}`:b.action==='setMoveTarget'?targetFields(b.moveTarget):b.action==='teleport'?destinationFields(b.destination):b.action==='flush'?'<p>Flush continues through touching active instances of the caught object types, beyond the initial area. Gaps and effect-blocked nodes stop the chain.</p>':'');
   function behaviourFields(b){
     if(b.type==='expand')return `<p>Copy the placed hierarchy onto highlighted path nodes. New copies act next turn.</p><label class="check-row"><input data-b="allowStacking" type="checkbox" ${b.allowStacking?'checked':''}> Allow copies where this object type is already present</label>`;
     if(b.type==='applyEffect')return field('Eligible objects','eligible',{any:'Any object type in area',selected:'Selected object types in area',linked:'Linked Object(s)'},eligibilityMode(b))+(eligibilityMode(b)==='selected'?typeSelection('eligible-object',b.eligibleAssetIds):eligibilityMode(b)==='linked'?'<p>Affects objects directly linked to the parent placement. Links bypass the area’s range; effect blockers still apply.</p>':'')+actionFields(b);
@@ -53,7 +53,7 @@ export function behaviourEditor({getProject,getLevel,isPlay,dispatch,showDialog,
         if(b.type==='applyEffect'||b.type==='useEffect'){
           if(b.type==='applyEffect'){b.eligibleMode=value('eligible');b.eligibleAssetIds=b.eligibleMode==='selected'?selected('eligible-object'):null;}
           else {b.usableAssetIds=value('usableMode')==='any'?null:selected('usable-object');b.useTarget=value('useTarget');}
-          if(b.action==='switchState'){b.stateKey=value('stateKey')?.trim()||'';b.stateEnabled=value('stateEnabled')==='true';}
+          if(b.action==='switchState'){b.stateKey=value('stateKey')?.trim()||'';b.stateToggle=value('stateEnabled')==='toggle';b.stateEnabled=value('stateEnabled')!=='false';}
           if(b.action==='setMoveTarget')b.moveTarget=readTarget(card);
           if(b.action==='teleport')b.destination=readDestination(card);
         }
@@ -80,7 +80,7 @@ export function behaviourEditor({getProject,getLevel,isPlay,dispatch,showDialog,
       // Read the old form before replacing controls with the new settings.
       read();const card=e.target.closest('[data-behaviour]'),n=draft.findIndex(b=>b.id===card.dataset.behaviour),b=draft[n];
       if(field==='type')draft[n]={...make(e.target.value),id:b.id,enabled:b.enabled};
-      if(field==='action'){b.action=e.target.value;if(b.action==='switchState'){b.stateKey='';b.stateEnabled=true;}if(b.action==='setMoveTarget')b.moveTarget={type:'self'};if(b.action==='teleport')b.destination={type:'position',x:0,y:0};}
+      if(field==='action'){delete b.stateToggle;b.action=e.target.value;if(b.action==='switchState'){b.stateKey='';b.stateEnabled=true;}if(b.action==='setMoveTarget')b.moveTarget={type:'self'};if(b.action==='teleport')b.destination={type:'position',x:0,y:0};}
       render();
     };
     $('#behaviour-form').onsubmit=e=>{

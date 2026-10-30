@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newProject,applyAction,validateProject} from '../public/model.js';
+import {newProject,applyAction,validateProject,stateEnabled} from '../public/model.js';
 import {blockedNodes,effectOverlay,checkMovement} from '../public/behaviour-areas.js';
 import {resolveTurn,availableUses,useObject,eventsAdvanceTurn,movementEvents} from '../public/behaviours.js';
 import {createSequence,eventTurn,previousTurn,validateSequence} from '../public/turn-sequence.js';
@@ -111,4 +111,45 @@ test('multiple stacked usable objects expose independent actions and a chosen ac
   const choices=availableUses(p,l);assert.equal(choices.length,2);
   const run=useObject(p,[],[],choices.find(choice=>choice.usedId==='lever2'));
   assert.deepEqual(run.graveyard[0].items.map(i=>i.id),['lever2']);assert.ok(run.project.levels[0].instances.some(i=>i.id==='lever1'));
+});
+
+test('Use Toggle alternates exclusive states on the clicked object or its linked target without changing defaults or other placements',()=>{
+  for(const useTarget of ['used','linked']){
+    let {p,l}=fixture();const targetAsset=useTarget==='used'?'usable':'door',targetId=useTarget==='used'?'lever1':'door1';
+    p.assets.find(a=>a.id===targetAsset).exclusiveStates=true;
+    p.assets.push(a('closed',targetAsset==='door'?'door':'lever',{kind:'state',parentId:targetAsset,enabled:true,name:'Closed'}),a('open',targetAsset==='door'?'door':'lever',{kind:'state',parentId:targetAsset,enabled:false,name:'Open'}));
+    l.instances.push(i('other',targetAsset,9));l.objectLinks=[link('control',['lever1','door1'])];
+    p.assets[3].behaviours=[b('toggle','useEffect',{usableAssetIds:['usable'],useTarget,action:'switchState',stateKey:'Open',stateEnabled:true,stateToggle:true})];
+    const defaults=structuredClone(p.assets);
+    for(const expected of ['open','closed','open','closed']){
+      const run=useObject(p,[],[],availableUses(p,p.levels[0])[0]);p=run.project;
+      const target=p.levels[0].instances.find(i=>i.id===targetId),other=p.levels[0].instances.find(i=>i.id==='other');
+      assert.equal(stateEnabled(p,p.assets.find(a=>a.id===expected),target),true);
+      assert.equal(['open','closed'].filter(id=>stateEnabled(p,p.assets.find(a=>a.id===id),target)).length,1);
+      assert.equal(stateEnabled(p,p.assets.find(a=>a.id==='closed'),other),true);assert.equal(run.log[0].count,1);
+      assert.deepEqual(p.assets,defaults);
+    }
+    assert.deepEqual(validateProject(JSON.parse(JSON.stringify(p))),p);
+  }
+});
+
+test('Use Toggle starts with the chosen state when none is enabled, cycles larger nested groups, and enables ancestors',()=>{
+  let {p,l}=fixture();p.assets.push(a('mode','lever',{kind:'state',parentId:'usable',enabled:false,exclusiveStates:true}));
+  for(const id of ['first','second','third'])p.assets.push(a(id,'lever',{kind:'state',parentId:'mode',enabled:false}));
+  p.assets[3].behaviours=[b('toggle','useEffect',{usableAssetIds:['usable'],useTarget:'used',action:'switchState',stateKey:'second',stateEnabled:true,stateToggle:true})];
+  for(const expected of ['second','third','first','second']){
+    p=useObject(p,[],[],availableUses(p,p.levels[0])[0]).project;
+    const target=p.levels[0].instances.find(i=>i.id==='lever1');
+    assert.equal(stateEnabled(p,p.assets.find(a=>a.id==='mode'),target),true);
+    assert.equal(stateEnabled(p,p.assets.find(a=>a.id===expected),target),true);
+    assert.equal(['first','second','third'].filter(id=>stateEnabled(p,p.assets.find(a=>a.id===id),target)).length,1);
+  }
+});
+
+test('Toggle skips non-exclusive or single-state groups and rejects use outside Use Switch State',()=>{
+  const {p,l}=fixture();p.assets.push(a('on','lever',{kind:'state',parentId:'usable',enabled:true}),a('off','lever',{kind:'state',parentId:'usable',enabled:false}));
+  const toggle=b('toggle','useEffect',{usableAssetIds:['usable'],useTarget:'used',action:'switchState',stateKey:'on',stateEnabled:true,stateToggle:true});p.assets[3].behaviours=[toggle];
+  assert.equal(useObject(p,[],[],availableUses(p,l)[0]).log[0].count,0);assert.equal(p.levels[0].instances[1].stateOverrides,undefined);
+  p.assets[1].exclusiveStates=true;p.assets=p.assets.filter(a=>a.id!=='off');assert.equal(useObject(p,[],[],availableUses(p,l)[0]).log[0].count,0);
+  for(const invalid of [{...toggle,stateToggle:'true'},{...toggle,action:'graveyard'},{...toggle,type:'applyEffect',eligibleAssetIds:null}])assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'effect',behaviours:[invalid]}}),/Toggle/);
 });
