@@ -5,7 +5,7 @@ import { deckIcon } from './cards-catalog.js';
 import { manipulation } from './manipulation.js';
 import { floatingCanvas } from './floating-canvas.js';
 import { initWorkshopProgress } from './workshop-progress.js';
-import { collectItems, releaseItem } from './player-inventory.js';
+import { collectItems, releaseItem, adjustStack } from './player-inventory.js';
 const $ = s => document.querySelector(s);
 // Appearance is a device preference, independent of the shared workshop.
 function applyTheme(theme) {
@@ -26,7 +26,7 @@ const workshopProgress = initWorkshopProgress({ endpoint, toast });
 let project = newProject(), authoritative = clone(project), revision = -1, pending = [], busy = false, connected = false, serverNeedsRestart = false;
 let levelId, selected = null, staged = null, tool = 'select', search = '', zoom = 1, play = null, playStart = null, historyStack = [], redoStack = [];
 let playStartRevision = null;
-let playerInventory=[], inventoryExpanded=false;
+let playerInventory=[], inventoryExpanded=false, graveyard=[], graveyardExpanded=false;
 let dragPayload = null, showAll = false, paint = null, toastTimer, didInitialFit = false;
 let notePending = null, noteTimer;
 let connectionStart = null, libraryTab='objects';
@@ -183,7 +183,7 @@ function render() {
   $('#level-tabs').innerHTML = (play || project).levels.map((l,i) => `<button data-level="${esc(l.id)}" class="${l.id === levelId ? 'active' : ''}"><span>${String(i+1).padStart(2,'0')}</span>${esc(l.name)}</button>`).join('');
   $('#edit-mode').classList.toggle('active',!play); $('#play-mode').classList.toggle('active',!!play);
   $('#play-banner').hidden = !play; $('#tools').hidden = !!play;
-  renderInventory();
+  renderInventory();renderInventory(true);
   $('#create-token').disabled = !!play; $('#add-level').disabled = !!play; $('#level-settings').disabled = !!play;
   $('#undo').disabled = !historyStack.length || !!play; $('#redo').disabled = !redoStack.length || !!play;
   $('#mode-label').innerHTML = `<span class="tiny-dot"></span>${play ? 'MANUAL PLAYTEST' : 'EDITING CANVAS'}`;
@@ -204,17 +204,26 @@ function render() {
   if(tool==='postIt')$('#canvas-hint').innerHTML='Choose a color, then click the canvas.<br><b>Post-its are shared and saved, including during playtests.</b>';
   if(activeDeck && $('#dialog').open && $('#dialog').dataset.deckView===activeDeck)renderDeckDialog();
 }
-function renderInventory() {
-  const panel=$('#player-inventory');panel.hidden=!play;
+function renderInventory(isGraveyard=false) {
+  const panel=$(isGraveyard?'#player-graveyard':'#player-inventory');panel.hidden=!play;
   if(!play)return;
-  panel.innerHTML=`<button id="inventory-toggle" class="inventory-header" aria-expanded="${inventoryExpanded}" aria-controls="inventory-contents" title="Player inventory · drop objects here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 6V4a4 4 0 0 1 8 0v2M6 8 3 10v9h3m12-11 3 2v9h-3"/><rect x="6" y="6" width="12" height="16" rx="3"/><rect x="8.5" y="13" width="7" height="6" rx="1.5"/><path d="M9 10h6"/></svg><span>Player inventory</span><small>${playerInventory.length}</small><span aria-hidden="true">${inventoryExpanded?'▾':'▸'}</span></button><div id="inventory-contents" ${inventoryExpanded?'':'hidden'}><p class="inventory-hint">Drop objects here from the canvas or library. Drag them back to place.</p><ul>${playerInventory.map(i=>{const a=asset(i.assetId);return `<li><div class="inventory-item" data-inventory-item="${esc(i.id)}" draggable="true" tabindex="0" role="button" aria-label="${esc(a?.name||'Object')}: drag onto canvas">${a?tokenArt(a,i):''}<span>${esc(a?.name||'Object')}</span></div><button data-discard-inventory="${esc(i.id)}" aria-label="Remove ${esc(a?.name||'object')} from inventory" title="Remove from inventory">×</button></li>`;}).join('')}</ul>${playerInventory.length?'':'<p class="inventory-empty">Your backpack is empty.</p>'}</div>`;
+  const entries=isGraveyard?graveyard:playerInventory, expanded=isGraveyard?graveyardExpanded:inventoryExpanded;
+  const key=isGraveyard?'graveyard':'inventory',title=isGraveyard?'Graveyard':'Player inventory';
+  const icon=isGraveyard?'<path d="M6 22V8a6 6 0 0 1 12 0v14M3 22h18M12 5v8M9 8h6"/>':'<path d="M8 6V4a4 4 0 0 1 8 0v2M6 8 3 10v9h3m12-11 3 2v9h-3"/><rect x="6" y="6" width="12" height="16" rx="3"/><rect x="8.5" y="13" width="7" height="6" rx="1.5"/><path d="M9 10h6"/>';
+  const total=entries.some(s=>s.count===0)?'∞':entries.reduce((n,s)=>n+s.count,0);
+  panel.innerHTML=`<button id="${key}-toggle" class="inventory-header" aria-expanded="${expanded}" aria-controls="${key}-contents" title="${title} · drop objects here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">${icon}</svg><span>${title}</span><small>${total}</small><span aria-hidden="true">${expanded?'▾':'▸'}</span></button><div id="${key}-contents" ${expanded?'':'hidden'}><p class="inventory-hint">${isGraveyard?'Drop canvas pieces here to remove them from play. Drag back to restore.':'Drop canvas or library objects. 0 = ∞ (infinite). Drag out to place one.'}</p><ul>${entries.map(stack=>{
+    const i=stack.items[0],a=asset(stack.assetId),name=esc(a?.name||'Object'),quantity=stack.count===0?'∞':stack.count;
+    return `<li><div class="inventory-item" data-${key}-item="${esc(stack.id)}" draggable="true" tabindex="0" role="button" aria-label="${name}: ${stack.count===0?'infinite':quantity} items, drag onto canvas"><span class="inventory-icon">${a?tokenArt(a,i):''}<span class="stack-count" aria-label="${stack.count===0?'Infinite supply':quantity+' items'}">${quantity}</span></span><span>${name}</span></div>${isGraveyard?'':`<div class="inventory-quantity"><button data-stack-adjust="${esc(stack.id)}" data-delta="-1" aria-label="Decrease ${name} quantity" title="Decrease quantity · 0 = infinite" ${stack.count===0?'disabled':''}>−</button><button data-stack-adjust="${esc(stack.id)}" data-delta="1" aria-label="Increase ${name} quantity" title="Increase quantity">+</button></div>`}<button data-discard-${key}="${esc(stack.id)}" aria-label="Remove ${name} from ${key}" title="Remove stack">×</button></li>`;
+  }).join('')}</ul>${entries.length?'':`<p class="inventory-empty">${isGraveyard?'No pieces removed yet.':'Your backpack is empty.'}</p>`}</div>`;
 }
-function collectInInventory(payload) {
-  if(!play)return;
+function collectInInventory(payload,isGraveyard=false) {
+  if(!play||isGraveyard&&payload.type!=='instance')return;
   try{
     if(notePending)saveNote();
-    const result=collectItems(play,playerInventory,level().id,payload);if(!result)return;
-    play=result.project;playerInventory=result.inventory;selected=null;inventoryExpanded=true;render();
+    const result=collectItems(play,isGraveyard?graveyard:playerInventory,level().id,payload);if(!result)return;
+    play=result.project;
+    if(isGraveyard){graveyard=result.inventory;graveyardExpanded=true;}else{playerInventory=result.inventory;inventoryExpanded=true;}
+    selected=null;render();
   }catch(error){toast(error.message);}
 }
 function renderBoard() {
@@ -627,6 +636,8 @@ function connectionNode(key) {
 document.addEventListener('click', e=>{
   if(Date.now()<suppressClickUntil){e.preventDefault();return;}
   if(notePending && e.target.id!=='instance-note') saveNote();
+  const quantity=e.target.closest('[data-stack-adjust]');if(quantity&&play){playerInventory=adjustStack(playerInventory,quantity.dataset.stackAdjust,Number(quantity.dataset.delta));renderInventory();return;}
+  const discardGraveyard=e.target.closest('[data-discard-graveyard]');if(discardGraveyard&&play){graveyard=graveyard.filter(i=>i.id!==discardGraveyard.dataset.discardGraveyard);renderInventory(true);return;}
   const discard=e.target.closest('[data-discard-inventory]');if(discard&&play){playerInventory=playerInventory.filter(i=>i.id!==discard.dataset.discardInventory);renderInventory();return;}
   const close=e.target.closest('[data-close]');if(close)return closeDialog();
   const deck=e.target.closest('[data-deck],[data-review-deck]');if(deck)return deckDialog(deck.dataset.deck||deck.dataset.reviewDeck);
@@ -664,6 +675,7 @@ document.addEventListener('click', e=>{
   }
   switch(e.target.closest('button')?.id){
     case 'inventory-toggle':inventoryExpanded=!inventoryExpanded;renderInventory();break;
+    case 'graveyard-toggle':graveyardExpanded=!graveyardExpanded;renderInventory(true);break;
     case 'post-it-tool':toast('Drag Post-it from the floating toolbar onto the canvas.');break;
     case 'edit-post-it':if(activePostIt())postItDialog(activePostIt());break;
     case 'delete-post-it':removeSelected();break;
@@ -697,10 +709,10 @@ document.addEventListener('click', e=>{
     case 'add-level':{if(project.levels.length>=30)return toast('This workshop supports up to 30 levels.');const l=blankLevel(uid(),`Level ${project.levels.length+1}`);dispatch({type:'level.add',data:l});levelId=l.id;selected=null;staged=null;render();fitBoard();break;}
     case 'play-mode':{
       if(play)return;if(pending.length)return toast('Wait for changes to save before playtesting.');
-      playerInventory=[];inventoryExpanded=false;playStartRevision=revision;playStart=clone(project);play=clone(project);staged=null;tool='select';selected=null;render();toast('Manual playtest. Drag pieces into the backpack to collect them.');break;
+      playerInventory=[];graveyard=[];graveyardExpanded=false;inventoryExpanded=false;playStartRevision=revision;playStart=clone(project);play=clone(project);staged=null;tool='select';selected=null;render();toast('Manual playtest. Drag pieces into the backpack to collect them.');break;
     }
-    case 'edit-mode':if(play){playerInventory=[];play=null;playStart=null;playStartRevision=null;selected=null;if(!project.levels.some(l=>l.id===levelId))levelId=project.levels[0].id;render();toast('Back to editing. Your original level is preserved.');}break;
-    case 'reset-play':if(play){playerInventory=[];play=clone(playStart);selected=null;render();toast('Playtest reset.');}break;
+    case 'edit-mode':if(play){playerInventory=[];graveyard=[];play=null;playStart=null;playStartRevision=null;selected=null;if(!project.levels.some(l=>l.id===levelId))levelId=project.levels[0].id;render();toast('Back to editing. Your original level is preserved.');}break;
+    case 'reset-play':if(play){playerInventory=[];graveyard=[];play=clone(playStart);selected=null;render();toast('Playtest reset.');}break;
   }
 });
 document.addEventListener('change',e=>{
@@ -728,24 +740,25 @@ document.addEventListener('pointerdown',e=>{
   if(e.button!==0||$('#dialog').open||e.target.closest('[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
   if(tool==='postIt'&&e.target.closest('#board'))return;
   const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),note=e.target.closest('[data-post-it]');
-  const inventoryItem=play&&e.target.closest('[data-inventory-item]');
-  if(e.target.closest('[data-discard-inventory]'))return;
+  const inventoryItem=play&&e.target.closest('[data-inventory-item],[data-graveyard-item]');
+  if(e.target.closest('[data-discard-inventory],[data-discard-graveyard],[data-stack-adjust]'))return;
   if(!inventoryItem&&!note&&!piece&&!row&&(!tagRow||play))return;
   e.preventDefault();
-  pointerDrag={startX:e.clientX,startY:e.clientY,active:false,payload:inventoryItem?{type:'inventory',id:inventoryItem.dataset.inventoryItem}:note?{type:'postIt',id:note.dataset.postIt,levelId:level().id}:piece?{type:'instance',id:piece.dataset.instance,levelId:level().id}:tagRow?{type:'tag',id:tagRow.dataset.tag}:{type:'asset',id:row.dataset.asset}};
+  pointerDrag={startX:e.clientX,startY:e.clientY,active:false,payload:inventoryItem?{type:inventoryItem.dataset.graveyardItem?'graveyard':'inventory',id:inventoryItem.dataset.graveyardItem||inventoryItem.dataset.inventoryItem}:note?{type:'postIt',id:note.dataset.postIt,levelId:level().id}:piece?{type:'instance',id:piece.dataset.instance,levelId:level().id}:tagRow?{type:'tag',id:tagRow.dataset.tag}:{type:'asset',id:row.dataset.asset}};
 });
 document.addEventListener('pointermove',e=>{
   if(!pointerDrag)return;
   if(!pointerDrag.active&&Math.hypot(e.clientX-pointerDrag.startX,e.clientY-pointerDrag.startY)>5){
     pointerDrag.active=true;
-    const a=pointerDrag.payload.type==='tag'?tag(pointerDrag.payload.id):pointerDrag.payload.type==='asset'?asset(pointerDrag.payload.id):asset((pointerDrag.payload.type==='inventory'?playerInventory:level().instances).find(i=>i.id===pointerDrag.payload.id)?.assetId);
+    const a=pointerDrag.payload.type==='tag'?tag(pointerDrag.payload.id):pointerDrag.payload.type==='asset'?asset(pointerDrag.payload.id):asset((pointerDrag.payload.type==='inventory'?playerInventory:pointerDrag.payload.type==='graveyard'?graveyard:level().instances).find(i=>i.id===pointerDrag.payload.id)?.assetId);
     const ghost=document.createElement('div');ghost.id='drag-ghost';ghost.innerHTML=`${pointerDrag.payload.type==='postIt'?'▧':pointerDrag.payload.type==='tag'?'#':a?tokenArt(a):sprite('rock')}<span>${pointerDrag.payload.type==='postIt'?'Post-it':esc(a?.name)}</span>`;document.body.append(ghost);
   }
   if(!pointerDrag.active)return;
   const ghost=$('#drag-ghost');ghost.style.left=`${e.clientX+14}px`;ghost.style.top=`${e.clientY+14}px`;
   document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));
   const target=document.elementFromPoint(e.clientX,e.clientY),cell=target?.closest('.cell'),row=target?.closest('[data-asset]'),root=target?.closest('[data-root-drop]');
-  if(play&&target?.closest('#player-inventory')&&['asset','instance'].includes(pointerDrag.payload.type))$('#player-inventory').classList.add('drop-target');
+  if(play&&target?.closest('#player-graveyard')&&pointerDrag.payload.type==='instance')$('#player-graveyard').classList.add('drop-target');
+  else if(play&&target?.closest('#player-inventory')&&['asset','instance'].includes(pointerDrag.payload.type))$('#player-inventory').classList.add('drop-target');
   else if(cell&&pointerDrag.payload.type!=='tag'&&(!play||pointerDrag.payload.type!=='asset'))cell.classList.add('drop-target');else if(!play)(pointerDrag.payload.type==='tag'?row:row||root)?.classList.add('nest-hover');
 });
 document.addEventListener('pointerup',e=>{
@@ -758,8 +771,8 @@ document.addEventListener('pointercancel',()=>{pointerDrag=null;$('#drag-ghost')
 document.addEventListener('dragstart',e=>{
   if(pointerDrag){e.preventDefault();return;}
   const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]');
-  const inventoryItem=play&&e.target.closest('[data-inventory-item]');
-  if(inventoryItem)dragPayload={type:'inventory',id:inventoryItem.dataset.inventoryItem};
+  const inventoryItem=play&&e.target.closest('[data-inventory-item],[data-graveyard-item]');
+  if(inventoryItem)dragPayload={type:inventoryItem.dataset.graveyardItem?'graveyard':'inventory',id:inventoryItem.dataset.graveyardItem||inventoryItem.dataset.inventoryItem};
   else if(piece)dragPayload={type:'instance',id:piece.dataset.instance,levelId:level().id};
   else if(tagRow&&!play)dragPayload={type:'tag',id:tagRow.dataset.tag};
   else if(row)dragPayload={type:'asset',id:row.dataset.asset};
@@ -769,11 +782,12 @@ document.addEventListener('dragstart',e=>{
 document.addEventListener('dragover',e=>{
   if(!dragPayload)return;
   const cell=e.target.closest('.cell'),row=e.target.closest('[data-asset]'),root=e.target.closest('[data-root-drop]'),piece=e.target.closest('[data-instance]');
+  const graveyardTarget=play&&e.target.closest('#player-graveyard')&&dragPayload.type==='instance';
   const inventoryTarget=play&&e.target.closest('#player-inventory')&&['asset','instance'].includes(dragPayload.type);
-  const valid=inventoryTarget||(dragPayload.type==='tag'?!play&&(row||piece):((!play||dragPayload.type!=='asset')&&(cell||piece))||(dragPayload.type==='asset'&&!play&&(row||root)));
+  const valid=graveyardTarget||inventoryTarget||(dragPayload.type==='tag'?!play&&(row||piece):((!play||dragPayload.type!=='asset')&&(cell||piece))||(dragPayload.type==='asset'&&!play&&(row||root)));
   if(valid){e.preventDefault();e.dataTransfer.dropEffect=dragPayload.type==='asset'&&(inventoryTarget||cell||piece)?'copy':'move';}
   document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));
-  if(inventoryTarget)$('#player-inventory').classList.add('drop-target');else if(valid&&cell)cell.classList.add('drop-target');else if(row&&dragPayload.type==='asset'&&!play)row.classList.add('nest-hover');else if(root)root.classList.add('nest-hover');
+  if(graveyardTarget)$('#player-graveyard').classList.add('drop-target');else if(inventoryTarget)$('#player-inventory').classList.add('drop-target');else if(valid&&cell)cell.classList.add('drop-target');else if(row&&dragPayload.type==='asset'&&!play)row.classList.add('nest-hover');else if(root)root.classList.add('nest-hover');
 });
 document.addEventListener('drop',e=>{
   if(!dragPayload)return;e.preventDefault();const payload=dragPayload;dragPayload=null;
@@ -782,6 +796,7 @@ document.addEventListener('drop',e=>{
 });
 function dropToken(target,payload){
   if(!target)return;
+  if(play&&target.closest('#player-graveyard')){collectInInventory(payload,true);return;}
   if(play&&target.closest('#player-inventory')){collectInInventory(payload);return;}
   if(payload.type==='postIt'){
     const pos=cursorCell();if(pos&&target.closest('#board')&&payload.levelId===level().id){selected={type:'postIt',id:payload.id};dispatch({type:'postIt.update',data:{levelId:payload.levelId,id:payload.id,...pos}});}return;
@@ -796,8 +811,8 @@ function dropToken(target,payload){
   const cell=target.closest('.cell'),piece=target.closest('[data-instance]');
   if(cell||piece){
     const target=cell?{x:Number(cell.dataset.x),y:Number(cell.dataset.y)}:level().instances.find(i=>i.id===piece.dataset.instance);
-    if(payload.type==='inventory'&&play){
-      try{const result=releaseItem(play,playerInventory,level().id,payload.id,{x:target.x,y:target.y},snapToNodes);play=result.project;playerInventory=result.inventory;selected={type:'instance',id:payload.id};render();}catch(error){toast(error.message);}return;
+    if(['inventory','graveyard'].includes(payload.type)&&play){
+      try{const fromGraveyard=payload.type==='graveyard',result=releaseItem(play,fromGraveyard?graveyard:playerInventory,level().id,payload.id,{x:target.x,y:target.y},snapToNodes);play=result.project;if(fromGraveyard)graveyard=result.inventory;else playerInventory=result.inventory;selected={type:'instance',id:result.instanceId};render();}catch(error){toast(error.message);}return;
     }
     if(payload.type==='asset'&&!play)place(payload.id,target.x,target.y);
     if(payload.type==='instance'&&payload.levelId===level().id){selected={type:'instance',id:payload.id};dispatch({type:'instance.update',data:{levelId:level().id,id:payload.id,x:target.x,y:target.y}});}return;
