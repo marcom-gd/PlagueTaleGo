@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {newProject,applyAction,validateProject,stateEnabled,appearance,activeDescendants,uid} from '../public/model.js';
-import {copyHierarchy,copyLevel} from '../public/editing.js';
+import {copyHierarchy,copyWholeHierarchy,copyLevel} from '../public/editing.js';
 function fixture(){
   const p=newProject(),l=p.levels[0];
   const token=(id,parentId=null)=>({id,name:id,icon:'torch',variant:'on',kind:'token',rule:'',tags:[],color:'#edc47c',range:2,parentId});
@@ -50,4 +50,23 @@ test('hierarchy and level copies remap internal references and keep independent 
   l.objectLinks=[{id:uid(),name:'Pair',rule:'',color:'#edc47c',instanceIds:['one','two']}];l.postIts=[{id:uid(),space:'canvas',text:'Note',color:'#edc47c',x:13.5,y:15}];
   const copied=copyLevel(l);assert.notEqual(copied.id,l.id);assert.deepEqual(copied.objectLinks[0].instanceIds,copied.instances.map(i=>i.id));assert.notEqual(copied.postIts[0].id,l.postIts[0].id);
   assert.equal(applyAction(p,{type:'level.add',data:copied}).levels.length,2);copied.postIts[0].text='changed';assert.equal(l.postIts[0].text,'Note');
+});
+
+test('selected branch copies omit ancestors and siblings while whole hierarchy copies include them',()=>{
+  const {p}=fixture(),before=structuredClone(p);
+  const branch=copyHierarchy(p,'lit');
+  assert.equal(branch.length,2);
+  assert.equal(branch[0].name,'lit copy');
+  assert.equal(branch[0].parentId,'torch');
+  assert.equal(branch[1].parentId,branch[0].id);
+  const withBranch=applyAction(p,{type:'asset.addMany',data:{assets:branch}});
+  assert.equal(withBranch.assets.length,6);
+  const whole=copyWholeHierarchy(p,'lit');
+  assert.equal(whole.length,4);
+  assert.equal(whole[0].name,'torch copy');
+  assert.equal(whole[0].parentId,null);
+  assert.equal(whole.filter(a=>a.parentId===whole[0].id).length,2);
+  assert.equal(applyAction(p,{type:'asset.addMany',data:{assets:whole}}).assets.length,8);
+  branch[1].tags.push('independent');
+  assert.deepEqual(p,before);
 });

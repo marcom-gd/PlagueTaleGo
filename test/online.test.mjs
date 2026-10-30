@@ -21,6 +21,16 @@ test('online sessions protect assets and APIs, share the tunnel URL, and sync re
     assert.equal((await fetch(base, { headers: { Authorization: 'Basic wrong' } })).status, 401);
     const config = await (await fetch(base + '/api/config', { headers })).json();
     assert.deepEqual(config, { urls: [online.publicUrl], transport: 'poll' });
+    const backupOptions = await (await fetch(base + '/api/options', { headers })).json();
+    assert.equal(backupOptions.canManageBackups, false);
+    const optionsUpdate = await fetch(base + '/api/options', { method: 'PUT', headers, body: JSON.stringify({ autosave: false, loadLatest: false }) });
+    assert.equal(optionsUpdate.status, 200);
+    const changedOptions = await optionsUpdate.json();
+    assert.equal(changedOptions.autosave, false);
+    assert.equal(changedOptions.loadLatest, false);
+    assert.equal(changedOptions.saveFolder, backupOptions.saveFolder);
+    assert.equal((await fetch(base + '/api/options', { method: 'PUT', headers, body: JSON.stringify({ autosave: true, loadLatest: true, saveFolder: 'another-folder' }) })).status, 403);
+    assert.equal((await fetch(base + '/api/rooms/class-a/save', { method: 'POST', headers })).status, 403);
     assert.equal((await fetch(base, { headers })).status, 200);
     const roomUrl = base + '/api/rooms/class-a';
     const initial = await (await fetch(roomUrl + '?since=-1', { headers })).json();

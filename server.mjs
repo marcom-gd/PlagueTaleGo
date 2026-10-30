@@ -9,10 +9,12 @@ import { createPresence } from './presence.mjs';
 import { deckIds, validateDeck } from './public/cards-catalog.js';
 import { initialWorkshop, validateWorkshop, updateWorkshop } from './public/workshop-programme.js';
 import { exportInventory, snapshotKinds } from './inventory-export.mjs';
+import { projectBackups } from './project-backups.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-export async function createWorkshopServer({ dataDir = path.join(root, 'data'), cardsDir = path.join(root, 'cards'), online = null } = {}) {
+export async function createWorkshopServer({ dataDir = path.join(root, 'data'), cardsDir = path.join(root, 'cards'), online = null, saveDir = dataDir === path.join(root, 'data') ? path.join(root, 'Saved Projects') : path.join(dataDir, 'Saved Projects'), autosaveIntervalMs = 5 * 60 * 1000 } = {}) {
   await mkdir(dataDir, { recursive: true });
+  const backups = await projectBackups({ defaultSaveFolder: saveDir, preferencesFile: path.join(dataDir, 'backup-options.json') });
   const rooms = new Map();
   const readDeck = async id => {
     if(!deckIds.includes(id))throw Error('Unknown card deck.');
@@ -21,7 +23,16 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
   let catalogQueue=Promise.resolve();
   async function getRoom(name) {
     if (!rooms.has(name)) rooms.set(name, (async () => {
-      let saved; try { saved = JSON.parse(await readFile(path.join(dataDir, name + '.json'), 'utf8')); saved.project = validateProject(saved.project); } catch { saved = { project: newProject(), revision: 0 }; }
+      let saved;
+      try {
+        saved = JSON.parse(await readFile(path.join(dataDir, name + '.json'), 'utf8'));
+        saved.project = validateProject(saved.project);
+      } catch {
+        const imported = await backups.latest();
+        saved = { project: imported || newProject(), revision: 0 };
+        // Persist a startup import so revisiting this room keeps its own design.
+        if (imported) await writeFile(path.join(dataDir, name + '.json'), JSON.stringify(saved));
+      }
       try { saved.workshop = validateWorkshop(saved.workshop); } catch { saved.workshop = initialWorkshop(); }
       try { saved.workshop = validateWorkshop(JSON.parse(await readFile(path.join(dataDir, name + '.workshop.json'), 'utf8'))); } catch {}
       return { ...saved, clients: new Set(), queue: Promise.resolve(), workshopQueue: Promise.resolve(), recent: new Map(), presence: createPresence() };
@@ -41,7 +52,20 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
     }
     const url = new URL(req.url, 'http://localhost');
     const json = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
+    const canManageBackups = !online && ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
     try {
+      if (url.pathname === '/api/options') {
+        if (req.method === 'GET') return json(200, { ...backups.snapshot(), canManageBackups });
+        if (req.method !== 'PUT') return json(405, { error: 'Method not allowed.' });
+        if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
+        let body = '';
+        for await (const chunk of req) { body += chunk; if (body.length > 8192) return json(413, { error: 'Options are too large.' }); }
+        const requested = JSON.parse(body);
+        const currentFolder = backups.snapshot().saveFolder;
+        if (!canManageBackups && requested.saveFolder !== undefined && requested.saveFolder !== currentFolder) return json(403, { error: 'Change the save folder from localhost on the workshop computer.' });
+        await backups.update({ ...requested, saveFolder: requested.saveFolder ?? currentFolder });
+        return json(200, { ...backups.snapshot(), canManageBackups });
+      }
       if(url.pathname==='/api/decks' && req.method==='GET')return json(200,{decks:await Promise.all(deckIds.map(readDeck)),canEdit:!online && ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)});
       if(url.pathname.startsWith('/api/decks/') && req.method==='PUT'){
         if(online || !['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress))return json(403,{error:'Edit the repository card inventories from localhost on the host computer.'});
@@ -67,6 +91,12 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
         const [, , , name, endpoint] = url.pathname.split('/');
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name || '')) return json(400, { error: 'Invalid room name.' });
         const room = await getRoom(name.toLowerCase());
+        if (endpoint === 'save' && req.method === 'POST') {
+          if (!canManageBackups) return json(403, { error: 'Save to a folder from localhost on the workshop computer, or use Export project to download.' });
+          if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
+          await room.queue;
+          return json(200, await backups.save(name.toLowerCase(), room.project));
+        }
         if (endpoint === 'inventory' && req.method === 'POST') {
           if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
           const chunks = []; let bytes = 0;
@@ -176,7 +206,21 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
   });
   const presenceCleanup = setInterval(async () => { for (const room of rooms.values()) (await room).presence.prune(); }, 5000);
   presenceCleanup.unref();
-  server.on('close', () => clearInterval(presenceCleanup));
+  let savingBackups = false;
+  const autosaveTimer = setInterval(async () => {
+    if (savingBackups || !backups.snapshot().autosave) return;
+    savingBackups = true;
+    try {
+      for (const [name, pendingRoom] of rooms) {
+        const room = await pendingRoom;
+        await room.queue.catch(() => {});
+        // The shared design is saved; private playtest changes stay in the browser.
+        await backups.save(name, room.project, true).catch(() => {});
+      }
+    } finally { savingBackups = false; }
+  }, autosaveIntervalMs);
+  autosaveTimer.unref();
+  server.on('close', () => { clearInterval(presenceCleanup); clearInterval(autosaveTimer); });
   return server;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -49,7 +49,7 @@ test('inventory captures all atoms, disabled branches, per-instance recipes, and
 
 test('geometry, challenge candidates, unknown scores and the full source snapshot are honest', () => {
   const p = fixture(), d = inventoryData(p, { room: 'qa', revision: 8, snapshotKind: 'playtest-current', exportedAt: '2026-10-29T12:00:00.000Z' });
-  assert.deepEqual(d.levels[0].slice(3, 14), [14, 11, 3, 1, 1, 5, 1, 1, 154, 3, 1]);
+  assert.deepEqual(d.levels[0].slice(3, 14), [10, 9, 3, 1, 1, 5, 1, 1, 90, 3, 1]);
   assert.equal(d.challenges.length, 1); assert.equal(d.members.length, 3); assert.equal(d.challenges[0][4], ''); assert.equal(d.challenges[0][7], '');
   assert.ok(d.atoms.every(a => a[12] === '')); assert.equal(d.levels[0][14], 'Incomplete');
   const { sheets } = inventorySheets(d), info = sheets.find(s => s.name === 'Export Info');

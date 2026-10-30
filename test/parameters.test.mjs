@@ -6,7 +6,7 @@ import {inventoryData} from '../inventory-export.mjs';
 
 const token=(id,parentId=null)=>({id,name:id,kind:'token',icon:'torch',rule:'',tags:[],color:'#b8cf96',range:2,parentId});
 const parameter=(id,parentId=null)=>({...token(id,parentId),icon:'area',followTokenFacing:true,occludedByWalls:true,overlapThreshold:1,overlapColor:'#edc47c'});
-function fixture(){const p=newProject();p.assets=[token('torch'),token('guard'),parameter('light')];return p;}
+function fixture(){const p=newProject();p.levels[0].width=14;p.levels[0].height=11;p.assets=[token('torch'),token('guard'),parameter('light')];return p;}
 const attach=(p,id,parentId,usageId)=>applyAction(p,{type:'parameter.attach',data:{id,parentId,usageId,originalUsageId:usageId+'-original'}});
 
 test('reusable parameters attach to several tokens and edits through any use update every property and overlay',()=>{

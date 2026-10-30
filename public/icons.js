@@ -34,8 +34,12 @@ export const iconVariants = {
 };
 iconNames.chickenThigh = 'Chicken thigh';
 iconNames.brazier = 'Brazier';
+iconNames.cookingPot = 'Cooking Pot';
+iconNames.hole = 'Hole';
 iconVariants.chickenThigh = { default:'Default' };
 iconVariants.brazier = { on:'Lit',off:'Unlit' };
+iconVariants.cookingPot = { default:'Default' };
+iconVariants.hole = { default:'Default' };
 export const defaultVariant = name => Object.keys(iconVariants[name] || {default:'Default'})[0];
 function variantPixels(name, variant) {
   let pixels=(Object.hasOwn(sprites,name) ? sprites[name] : sprites.rock).map(row=>[...row]);

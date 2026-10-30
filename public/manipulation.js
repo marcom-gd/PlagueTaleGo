@@ -1,5 +1,5 @@
 import {clone,uid,hasNode} from './model.js';
-import {copyHierarchy,copyLevel} from './editing.js';
+import {copyHierarchy,copyWholeHierarchy} from './editing.js';
 export function manipulation({getProject,getLevel,getSelected,setSelected,dispatch,render,toast,isPlay,snap,esc,collectInventory}){
   let selection=new Set(),drag=null,suppress=0,clipboard=null;
   const panel=document.createElement('section');panel.className='manipulation-panel';document.querySelector('#inspector').before(panel);
@@ -25,7 +25,7 @@ export function manipulation({getProject,getLevel,getSelected,setSelected,dispat
     const focus=getSelected();if(focus?.type!=='instance')selection.clear();else {selection=new Set([...selection].filter(id=>getLevel().instances.some(i=>i.id===id)));selection.add(focus.id);}
     for(const piece of document.querySelectorAll('[data-instance]')){const i=getLevel().instances.find(i=>i.id===piece.dataset.instance);piece.classList.toggle('group-selected',selection.has(i?.id));piece.classList.toggle('scenery-locked',!!i?.locked);piece.draggable=!i?.locked;}
     const items=selectedItems(),a=focus?.type==='asset'?getProject().assets.find(a=>a.id===focus.id):null,active=items.find(i=>i.id===focus?.id),stack=active?getLevel().instances.filter(i=>i.x===active.x&&i.y===active.y):[];
-    panel.innerHTML=`<div class="eyebrow">MANIPULATE & ORGANIZE</div><p>Shift/Ctrl-click pieces to select several. Drag or use arrow keys to move the group.</p><div class="inspector-actions"><button data-edit-action="select-all">Select all pieces</button><button data-edit-action="clear">Clear selection</button><button data-edit-action="copy-level" ${isPlay()?'disabled':''}>Duplicate level</button></div>${items.length?`<p><b>${items.length} selected</b> · ${items.filter(i=>i.locked).length} locked</p><div class="inspector-actions"><button data-edit-action="duplicate">Duplicate selection</button><button data-edit-action="lock">Lock scenery</button><button data-edit-action="unlock">Unlock</button><button data-edit-action="remove">Remove selected</button></div>`:''}${a?`<button data-edit-action="copy-hierarchy" ${isPlay()?'disabled':''}>Duplicate whole hierarchy</button>`:''}${stack.length>1?`<div class="stack-picker"><label for="stack-piece">Objects at this cell (${stack.length})</label><select id="stack-piece">${stack.map(i=>`<option value="${esc(i.id)}" ${i.id===focus.id?'selected':''}>${esc(getProject().assets.find(a=>a.id===i.assetId)?.name||'Object')}${i.locked?' · locked':''} · ${esc(i.id.slice(0,5))}</option>`).join('')}</select></div>`:''}`;
+    panel.innerHTML=`<div class="eyebrow">MANIPULATE & ORGANIZE</div><p>Shift/Ctrl-click pieces to select several. Drag or use arrow keys to move the group.</p><div class="inspector-actions"><button data-edit-action="select-all">Select all pieces</button><button data-edit-action="clear">Clear selection</button></div>${items.length?`<p><b>${items.length} selected</b> · ${items.filter(i=>i.locked).length} locked</p><div class="inspector-actions"><button data-edit-action="duplicate">Duplicate selection</button><button data-edit-action="lock">Lock scenery</button><button data-edit-action="unlock">Unlock</button><button data-edit-action="remove">Remove selected</button></div>`:''}${a?`<div class="inspector-actions"><button data-edit-action="copy-hierarchy" ${isPlay()?'disabled':''}>Duplicate whole hierarchy</button><button data-edit-action="copy-selected" ${isPlay()?'disabled':''}>Duplicate Selected</button></div>`:''}${stack.length>1?`<div class="stack-picker"><label for="stack-piece">Objects at this cell (${stack.length})</label><select id="stack-piece">${stack.map(i=>`<option value="${esc(i.id)}" ${i.id===focus.id?'selected':''}>${esc(getProject().assets.find(a=>a.id===i.assetId)?.name||'Object')}${i.locked?' · locked':''} · ${esc(i.id.slice(0,5))}</option>`).join('')}</select></div>`:''}`;
   }
   panel.addEventListener('change',e=>{if(e.target.id==='stack-piece')choose(e.target.value);});
   panel.addEventListener('click',e=>{
@@ -36,8 +36,11 @@ export function manipulation({getProject,getLevel,getSelected,setSelected,dispat
     if(action==='duplicate')duplicate();
     if(action==='lock'||action==='unlock')dispatch({type:'instance.batch',data:{levelId:getLevel().id,updates:items.map(i=>({id:i.id,locked:action==='lock'}))}});
     if(action==='remove')dispatch({type:'instance.batch',data:{levelId:getLevel().id,removeIds:items.map(i=>i.id)}});
-    if(action==='copy-hierarchy'&&!isPlay()){const assets=copyHierarchy(getProject(),getSelected().id);if(dispatch({type:'asset.addMany',data:{assets}})!==false){setSelected({type:'asset',id:assets[0].id});render();}}
-    if(action==='copy-level'&&!isPlay()){const level=copyLevel(getLevel());if(dispatch({type:'level.add',data:level})!==false)toast('Level duplicated. Open its new tab to edit it.');}
+    if(['copy-hierarchy','copy-selected'].includes(action)&&!isPlay()){
+      const copy=action==='copy-selected'?copyHierarchy:copyWholeHierarchy;
+      const assets=copy(getProject(),getSelected().id);
+      if(dispatch({type:'asset.addMany',data:{assets}})!==false){setSelected({type:'asset',id:assets[0].id});render();}
+    }
   });
   document.addEventListener('click',e=>{const piece=e.target.closest('[data-instance]');if(!piece)return;if(performance.now()<suppress){e.preventDefault();e.stopImmediatePropagation();return;}if(e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();e.stopImmediatePropagation();choose(piece.dataset.instance,true);}},true);
   document.addEventListener('pointerdown',e=>{

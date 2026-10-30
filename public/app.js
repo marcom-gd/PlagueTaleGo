@@ -7,8 +7,13 @@ import { floatingCanvas } from './floating-canvas.js';
 import { initWorkshopProgress } from './workshop-progress.js';
 import { collectItems, releaseItem, adjustStack } from './player-inventory.js';
 import { editorDraft } from './editor-draft.js';
+import { applyTextScale, textScale } from './ui-preferences.js';
+import { copyLevel } from './editing.js';
 import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles } from './model.js';
 const $ = s => document.querySelector(s);
+let uiTextScale = 100;
+try { uiTextScale = textScale(localStorage.getItem('workshop-text-scale') ?? 100); } catch {}
+applyTextScale(uiTextScale);
 // Appearance is a device preference, independent of the shared workshop.
 function applyTheme(theme) {
   document.documentElement.dataset.theme=theme;
@@ -19,12 +24,24 @@ function applyTheme(theme) {
 }
 applyTheme(document.documentElement.dataset.theme);
 function expandLibrary(expanded) {
+  if(expanded)showDefinitionOnly(false);
   $('#workshop-sidebar').classList.toggle('library-expanded',expanded);
   const button=$('#library-expand');button.setAttribute('aria-pressed',String(expanded));button.setAttribute('aria-label',expanded?'Restore library layout':'Expand library vertically');button.title=expanded?'Restore library layout':'Expand library vertically';button.textContent=expanded?'↧':'↕';
   try{localStorage.setItem('workshop-library-expanded',String(expanded));}catch{}
 }
+function showDefinitionOnly(enabled) {
+  if(enabled)expandLibrary(false);
+  $('#workshop-sidebar').classList.toggle('definition-only',enabled);
+  const button=$('#definition-only');
+  button.setAttribute('aria-pressed',String(enabled));
+  button.setAttribute('aria-label',enabled?'Restore library and definition layout':'Show only definition');
+  button.title=enabled?'Restore library and definition layout':'Show only definition';
+  try{localStorage.setItem('workshop-definition-only',String(enabled));}catch{}
+}
 let libraryExpanded=false;try{libraryExpanded=localStorage.getItem('workshop-library-expanded')==='true';}catch{}
 expandLibrary(libraryExpanded);
+let definitionOnly=false;try{definitionOnly=localStorage.getItem('workshop-definition-only')==='true';}catch{}
+showDefinitionOnly(definitionOnly);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const params = new URLSearchParams(location.search);
 let room = params.get('room');
@@ -40,6 +57,10 @@ let dragPayload = null, showAll = false, paint = null, toastTimer, didInitialFit
 let notePending = null, noteTimer;
 let connectionStart = null, libraryTab='objects';
 let floorTile = 'floor';
+let patrolId=null, showPatrols=true;
+const activePatrol=()=>level().patrols?.find(p=>p.id===patrolId);
+function updatePatrol(changes){if(activePatrol())return dispatch({type:'patrol.update',data:{levelId:level().id,id:patrolId,...changes}});}
+function newPatrol(){const patrol={id:uid(),name:'Patrol '+((level().patrols?.length||0)+1),color:activePatrol()?.color||'#e89750',nodes:[],hidden:false};patrolId=patrol.id;tool='patrol';staged=null;selected=null;showPatrols=true;dispatch({type:'patrol.add',data:{levelId:level().id,patrol}});}
 const painterTile = () => tool === 'floor' ? floorTile : tool;
 let linkDraft=[];
 let copiedInstance=null, canvasPointer=null, snapToNodes=false;
@@ -193,21 +214,25 @@ function render() {
   $('#token-count').textContent = `${l.instances.length} token${l.instances.length === 1 ? '' : 's'} placed`;
   $('#level-tabs').innerHTML = (play || project).levels.map((l,i) => `<button data-level="${esc(l.id)}" class="${l.id === levelId ? 'active' : ''}"><span>${String(i+1).padStart(2,'0')}</span>${esc(l.name)}</button>`).join('');
   $('#edit-mode').classList.toggle('active',!play); $('#play-mode').classList.toggle('active',!!play);
-  $('#play-banner').hidden = !play; $('#tools').hidden = !!play;
+  $('#play-banner').hidden = !play; $('#tools').hidden = false;
+  $('#canvas-wrap').classList.toggle('playtesting',!!play);
   renderInventory();renderInventory(true);
   $('#create-token').disabled = !!play; $('#add-level').disabled = !!play; $('#level-settings').disabled = !!play;
   $('#undo').disabled = !historyStack.length || !!play; $('#redo').disabled = !redoStack.length || !!play;
   $('#mode-label').innerHTML = `<span class="tiny-dot"></span>${play ? 'MANUAL PLAYTEST' : 'EDITING CANVAS'}`;
-  const tools = [['select','↖','Select & move · V'],['floor','▦','Paint floor · F'],['node','⊙','Paint path nodes · N'],['wall','▧','Paint walls · W'],['empty','⌫','Erase tiles · E'],['unlink','⋯','Erase connection · X'],['connect','↔','Reconnect nodes · C'],['link','⚯','Link objects · L']];
-  $('#tools').innerHTML = tools.map(([id,icon,label]) => {
+  const tools = [['select','↖','Select & move · V'],['floor','▦','Paint floor · F'],['patrol','〰','Patrol path'],['node','⊙','Paint path nodes · N'],['wall','▧','Paint walls · W'],['empty','⌫','Erase tiles · E'],['unlink','⋯','Erase connection · X'],['connect','↔','Reconnect nodes · C'],['link','⚯','Link objects · L']];
+  $('#tools').innerHTML = (play?[]:tools).map(([id,icon,label]) => {
     const active=tool===id&&!staged;
     const button=`<button data-tool="${id}" class="${active?'active':''}" aria-label="${label}" data-tip="${label}" aria-pressed="${active}" ${id==='floor'?`aria-expanded="${active}" aria-controls="floor-variants"`:''}>${icon}</button>`;
     if(id!=='floor')return button;
     return `<div class="floor-tool">${button}<div id="floor-variants" class="floor-variants" role="group" aria-label="Floor type" ${active?'':'hidden'}><span class="floor-variants-title">Floor type</span>${floorVariants.map(({tile,label})=>`<button data-floor-tile="${tile}" aria-pressed="${floorTile===tile}" class="${floorTile===tile?'active':''}"><span class="floor-swatch ${tile}" aria-hidden="true"></span><span>${label}</span><span class="floor-choice-check" aria-hidden="true">${floorTile===tile?'✓':''}</span></button>`).join('')}</div></div>`;
   }).join('') + `<div class="tool-separator"></div><button data-tool="overlays" class="${showAll ? 'active' : ''}" aria-label="Toggle all parameter overlays" data-tip="Show all parameters">◉</button>`;
+  $('#tools').insertAdjacentHTML('beforeend', '<button id="toggle-patrols" aria-label="Toggle patrol visibility" aria-pressed="'+showPatrols+'" data-tip="Hide / show patrols">〰</button>');
+  renderPatrolPanel();
   $('#canvas-hint').innerHTML = play ? 'Drag pieces to play. Piece changes are temporary.<br><b>Post-its and card draws stay shared and saved.</b>' : staged ? `Placing ${esc(asset(staged)?.name || 'token')}.<br><b>Click a cell to place. Esc to finish.</b>` : l.instances.length ? 'Every piece is a possibility.<br><b>Select a token to inspect its parameters.</b>' : 'An empty stage for your ideas.<br><b>Start with a token, or shape the ground.</b>';
   if (!play && ['connect','unlink'].includes(tool)) $('#canvas-hint').innerHTML = `${tool==='unlink'?'Erase a connection':'Reconnect nodes'}.<br><b>${connectionStart?'Now select an adjacent node.':'Click a line, or select two adjacent nodes.'}</b>`;
   if(!play&&!staged&&tool==='floor')$('#canvas-hint').innerHTML=`${floorVariants.find(v=>v.tile===floorTile).label} floor.<br><b>Click or drag cells to paint. F opens floor types.</b>`;
+  if(!play&&tool==='patrol')$('#canvas-hint').innerHTML='Patrol path: select or create a patrol.<br><b>Click or drag across existing nodes in order. Swap S / E to reverse.</b>';
   if(tool==='link')$('#canvas-hint').innerHTML='Click objects to include them in a link.<br><b>Choose two or more, then Create link. Esc to cancel.</b>';
   let builder=$('#link-builder');
   if(!builder){builder=document.createElement('div');builder.id='link-builder';builder.className='link-builder';$('#canvas-wrap').append(builder);}
@@ -220,6 +245,29 @@ function render() {
   document.querySelectorAll('.deck-tools [data-deck]').forEach(button=>{const id=button.dataset.deck;button.innerHTML=`${deckIcon(id)}<span>Design ${id==='experiments'?'Experiments':'Challenges'}</span>`;});
   if(tool==='postIt')$('#canvas-hint').innerHTML='Choose a color, then click the canvas.<br><b>Post-its are shared and saved, including during playtests.</b>';
   if(activeDeck && $('#dialog').open && $('#dialog').dataset.deckView===activeDeck)renderDeckDialog();
+}
+const patrolColors=[['#e89750','Orange'],['#5088dd','Blue'],['#75ad82','Green'],['#d66565','Red'],['#b281cf','Purple'],['#e5c359','Yellow'],['#55b5b2','Teal'],['#dc87b1','Pink']];
+function patrolColorChoices(color){
+  const custom=!patrolColors.some(([value])=>value===color.toLowerCase());
+  return `<div class="patrol-colors" role="group" aria-label="Patrol color">${patrolColors.map(([value,name])=>`<button type="button" class="patrol-color-swatch" data-patrol-color="${value}" style="--patrol-swatch:${value}" aria-label="${name} patrol color" aria-pressed="${value===color.toLowerCase()}" title="${name}"></button>`).join('')}<label class="patrol-custom-color ${custom?'selected':''}" style="--patrol-swatch:${color}" title="Choose a custom patrol color"><span aria-hidden="true">＋</span><input id="patrol-color" type="color" value="${color}" aria-label="Custom patrol color"></label></div>`;
+}
+function renderPatrolPanel() {
+  let panel=$('#patrol-panel');
+  if(!panel){panel=document.createElement('details');panel.id='patrol-panel';$('#canvas-wrap').append(panel);}
+  const patrols=level().patrols||[], current=activePatrol();
+  panel.hidden=tool!=='patrol'&&!patrols.length;
+  if(tool==='patrol'&&!play)panel.open=true;
+  panel.innerHTML=`<summary>Patrol paths · ${patrols.length}</summary><div class="patrol-list">${patrols.map(p=>`<div class="patrol-row"><button data-patrol="${esc(p.id)}" aria-pressed="${p.id===patrolId}"><span style="background:${p.color}"></span>${esc(p.name)}</button><label title="Show this patrol"><input type="checkbox" data-patrol-hidden="${esc(p.id)}" ${p.hidden?'':'checked'} aria-label="Show ${esc(p.name)}"></label></div>`).join('')}</div>${!play?`<button id="new-patrol">＋ New patrol</button>${current?`<div class="field"><label for="patrol-name">Name</label><input id="patrol-name" maxlength="80" value="${esc(current.name)}"></div><div class="field"><label>Color</label>${patrolColorChoices(current.color)}</div><small>Paint existing nodes in order. ${current.nodes.length} nodes.</small><div class="inspector-actions"><button id="swap-patrol">Swap S / E</button><button id="clear-patrol">Clear path</button><button id="delete-patrol" class="danger">Delete</button></div>`:''}`:''}`;
+}
+function patrolArtwork(l) {
+  if(!showPatrols)return '';
+  const patrols=(l.patrols||[]).filter(p=>!p.hidden).sort((a,b)=>Number(a.id===patrolId)-Number(b.id===patrolId));
+  return `<svg class="patrol-artwork" viewBox="0 0 ${l.width} ${l.height}" preserveAspectRatio="none" aria-hidden="true">${patrols.map(p=>{
+    const nodes=paint?.tile==='patrol'&&p.id===patrolId?[...new Set([...p.nodes,...paint.cells])]:p.nodes;
+    const points=nodes.map(key=>key.split(',').map(Number).map(n=>n+.5));
+    const focused=p.id===patrolId;
+    return `<g style="color:${p.color}" opacity="${activePatrol()&&!focused ? .45 : 1}"><polyline points="${points.map(v=>v.join(',')).join(' ')}"/><g>${points.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="${focused ? .16 : .12}"/>`).join('')}</g>${points.length?[[points[0],'S'],[points.at(-1),'E']].map(([[x,y],label])=>`<text x="${x+(points.length===1?(label==='S'?-.2:.2):0)}" y="${y-.23}">${label}</text>`).join(''):''}</g>`;
+  }).join('')}</svg>`;
 }
 function renderInventory(isGraveyard=false) {
   const panel=$(isGraveyard?'#player-graveyard':'#player-inventory');panel.hidden=!play;
@@ -245,8 +293,9 @@ function collectInInventory(payload,isGraveyard=false) {
 }
 function renderBoard() {
   const l = level(), board = $('#board');
+  board.dataset.paintTool=play?'select':tool;
   const preview=paint?clone(l):l;
-  if(paint)paintLevelTiles(preview,[...paint.cells],paint.tile);
+  if(paint&&paint.tile!=='patrol')paintLevelTiles(preview,[...paint.cells],paint.tile);
   board.style.setProperty('--cols',l.width); board.style.setProperty('--rows',l.height); board.style.setProperty('--cell',`${48*zoom}px`);
   let html = '';
   for (let y = 0; y < l.height; y++) for (let x = 0; x < l.width; x++) {
@@ -268,6 +317,7 @@ function renderBoard() {
     }
   }
   html += `<svg class="node-lines" viewBox="0 0 ${l.width} ${l.height}" preserveAspectRatio="none" aria-hidden="true">${lines}</svg>${handles}`;
+  html += patrolArtwork(l);
   for (const i of l.instances) {
     const a = asset(i.assetId); if (!a || !assetIsActive(currentProject(),a.id,i)) continue;
     const isSelected = selected?.type === 'instance' && (selected.id === i.id || editingTools?.isSelected(i.id));
@@ -275,7 +325,7 @@ function renderBoard() {
     const children = activeDescendants(currentProject(),a.id,i);
     const facing=facingDirection(a,i);
     const stack = l.instances.filter(n => n.x === i.x && n.y === i.y).indexOf(i);
-    html += `<button class="piece ${i.locked?'scenery-locked':''} ${isSelected?'selected':''} ${tool==='link'&&linkDraft.includes(i.id)?'link-picked':''}" data-instance="${esc(i.id)}" draggable="${tool!=='link'&&!i.locked}" title="${esc(a.name)} · ${(i.rotation+(a.rotation||0))%360}°" aria-label="${esc(a.name)} at ${i.x+1}, ${i.y+1}, rotated ${(i.rotation+(a.rotation||0))%360} degrees" style="--x:${i.x};--y:${i.y};--rotation:${(i.rotation+(a.rotation||0))%360}deg;${stack ? `margin-left:${stack*5}px;margin-top:${stack*-4}px;` : ''}">${tokenArt(a,i)}${facing===null?'':`<span class="direction" data-facing="${facing}" aria-hidden="true">▴</span>`}${children.length ? `<span class="child-count">${children.length}</span>` : ''}</button>`;
+    html += `<button class="piece ${i.locked?'scenery-locked':''} ${isSelected?'selected':''} ${tool==='link'&&linkDraft.includes(i.id)?'link-picked':''}" data-instance="${esc(i.id)}" draggable="${tool!=='link'&&!i.locked}" title="${esc(a.name)} · ${(i.rotation+(a.rotation||0))%360}°" aria-label="${esc(a.name)} at ${i.x+1}, ${i.y+1}, rotated ${(i.rotation+(a.rotation||0))%360} degrees" style="--x:${i.x};--y:${i.y};--rotation:${(i.rotation+(a.rotation||0))%360}deg;${stack ? `margin-left:${stack*5}px;margin-top:${stack*-4}px;` : ''}">${tokenArt(a,i)}${i.patrolColor?`<span class="instance-color-dot" style="background:${i.patrolColor}" title="Patrol color ${i.patrolColor}"></span>`:''}${facing===null?'':`<span class="direction" data-facing="${facing}" aria-hidden="true">▴</span>`}${children.length ? `<span class="child-count">${children.length}</span>` : ''}</button>`;
   }
   board.innerHTML = html+objectLinkArtwork(l);
   $('#zoom-label').textContent = `${Math.round(zoom*100)}%`;
@@ -291,6 +341,7 @@ function overlays(a,i,l) {
 }
 function renderLibrary() {
   const p=currentProject(), library=$('#library'), tree=['objects','all'].includes(libraryTab);
+  $('#library-root-drop').hidden=!!play;
   const matching=a=>!search || [a.name,a.rule,...assetTags(a).flatMap(t=>[t.name,t.rule])].join(' ').toLowerCase().includes(search);
   $('#library-tabs').innerHTML=['objects','tokens','parameters','tags','all'].map(id=>`<button role="tab" id="library-tab-${id}" aria-controls="library" aria-selected="${id===libraryTab}" data-library-tab="${id}">${id[0].toUpperCase()+id.slice(1)}</button>`).join('');
   library.setAttribute('aria-labelledby',`library-tab-${libraryTab}`);
@@ -315,7 +366,7 @@ function renderLibrary() {
   else roots=p.assets.filter(a=>!isState(a)&&(libraryTab==='parameters'?!a.parameterId:assetIsActive(p,a.id))&&isParameter(a)===(libraryTab==='parameters'));
   let html=libraryTab==='tags'?'':roots.map(a=>show(a)).join('');
   if(['tags','all'].includes(libraryTab))html+=`<div class="catalog-tags">${p.tags.filter(t=>!search||[t.name,t.rule].join(' ').toLowerCase().includes(search)).map(t=>`<button class="tag" data-edit-tag="${esc(t.id)}" draggable="${!play}" data-tag="${esc(t.id)}" style="--tag-color:${t.color}" title="${esc(t.rule||'Edit tag')}">${esc(t.name)}</button>`).join('')}</div>`;
-  library.innerHTML=(staged?`<div class="staged-hint">Click the level to place ${esc(asset(staged)?.name)}. Esc to finish.</div>`:'') + (html && html!=='<div class="catalog-tags"></div>'?html:`<p class="pool-empty">${search?'No matches in this tab.':libraryTab==='objects'?'Create a token to build an object hierarchy.':`No ${libraryTab} yet. Use + to create one.`}</p>`) + (!play&&libraryTab!=='tags'?'<div class="root-drop" data-root-drop>Drop here to make a standalone token</div>':'') + (!p.assets.length&&!p.tags.length&&!play?'<button class="text-btn" id="load-example">Explore an example ↗</button>':'');
+  library.innerHTML=(staged?`<div class="staged-hint">Click the level to place ${esc(asset(staged)?.name)}. Esc to finish.</div>`:'') + (html && html!=='<div class="catalog-tags"></div>'?html:`<p class="pool-empty">${search?'No matches in this tab.':libraryTab==='objects'?'Create a token to build an object hierarchy.':`No ${libraryTab} yet. Use + to create one.`}</p>`) + (!p.assets.length&&!p.tags.length&&!play?'<button class="text-btn" id="load-example">Explore an example ↗</button>':'');
 }
 function compositionTree(a,depth=0,i=null) {
   return currentProject().assets.filter(b=>b.parentId===a.id).map(c=>{
@@ -342,6 +393,7 @@ function renderInspector() {
     if(!i){el.querySelector('.eyebrow').textContent=a.parameterId?'SHARED PARAMETER USE':'PARAMETER DEFINITION';$('#delete-selected').textContent=a.parameterId?'Detach parameter':'Delete parameter';}
   }
   if(i) {
+    el.insertAdjacentHTML('beforeend',`<div class="field"><label for="instance-patrol-color">Patrol color dot</label><input id="instance-patrol-color" type="color" value="${i.patrolColor||activePatrol()?.color||'#e89750'}"><div class="inspector-actions"><button id="use-patrol-color" ${activePatrol()?'':'disabled'}>Use selected patrol color</button><button id="clear-patrol-color" ${i.patrolColor?'':'disabled'}>Remove dot</button></div><small>Choose a color to identify this placement's patrol.</small></div>`);
     const links=(level().objectLinks||[]).filter(link=>link.instanceIds.includes(i.id));
     el.insertAdjacentHTML('beforeend',`<div class="nested-title">LINKS · ${links.length}</div><div class="inspector-links">${links.map(link=>`<button data-object-link="${esc(link.id)}"><span style="background:${link.color}"></span>${esc(link.name)}</button>`).join('')}</div>`);
   }
@@ -636,13 +688,86 @@ function guideDialog() {
     ['Play by hand, together','Playtest makes a temporary local copy of the pieces. Move and rotate freely, then reset or return to editing. Post-its and card draws stay shared and saved. Share a room link for live editing on the same local network.'],
     ['Leave an observation','Choose a color, then drag Post-it from the floating toolbar onto any canvas space. Drag its body to move freely; double-click to edit. Drag Arrow, Step, or Question to annotate the board. Use Visibility to hide categories, or an item’s minus button to hide it. Notes survive playtest resets.'],
     ['Draw a design prompt','Design Experiments and Design Challenges each start with 12 cards. Draw randomly without replacement; Return all cards resets only that deck for this room. Review the inventory in the deck dialog, or open Card Studio to edit the repository files on the host.']
-  ].map(([title,text],n)=>`<div class="help-item"><span class="help-number">0${n+1}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}</div><div class="callout">Overlays are visual rulers: area uses Manhattan (diamond) distance, Line Effect is a straight directional line; cones widen toward their far edge and rectangles keep a constant width. Cross Effect includes the origin and extends one-cell-wide arms in all four directions. Library rotation updates the shared definition; placement rotation adds to it. Neither applies collisions, visibility, inventory, turns, or win conditions. Multiple tokens can share a cell; remove or move the top one to reach the others.</div><details><summary>Keyboard shortcuts</summary><p>V select · F floor · N nodes · W walls · E erase tiles · X erase connection · C reconnect · R rotate · Delete remove selected token · Esc deselect · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo · / search. Use arrow keys to move a selected piece; Enter on a focused cell activates it.</p></details><p style="margin-top:18px;font-size:10px">Original workshop sprites. An unofficial, educational fan project inspired by the GO games and A Plague Tale.</p>`,'<button data-close class="primary">Back to the workbench</button>','FIELD GUIDE'));
+  ].map(([title,text],n)=>`<div class="help-item"><span class="help-number">0${n+1}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}</div><div class="callout">Overlays are visual rulers: area uses Manhattan (diamond) distance, Line Effect is a straight directional line; cones widen toward their far edge and rectangles keep a constant width. Cross Effect includes the origin and extends one-cell-wide arms in all four directions. Library rotation updates the shared definition; placement rotation adds to it. Neither applies collisions, visibility, inventory, turns, or win conditions. Multiple tokens can share a cell; remove or move the top one to reach the others.</div><details><summary>Keyboard shortcuts</summary><p>V select · F floor · N nodes · W walls · E erase tiles · X erase connection · C reconnect · R rotate · Delete remove selected token · Esc deselect · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo · / search. Use arrow keys to move a selected piece; Enter on a focused cell activates it.</p></details><p style="margin-top:18px;font-size:0.769231rem">Original workshop sprites. An unofficial, educational fan project inspired by the GO games and A Plague Tale.</p>`,'<button data-close class="primary">Back to the workbench</button>','FIELD GUIDE'));
 }
+async function optionsDialog() {
+  showDialog(modal('Options', '<p id="options-loading" role="status">Loading options…</p>'));
+  try {
+    const response = await fetch('/api/options');
+    if (!response.ok) throw Error('Could not load options. Refresh the workshop server and try again.');
+    const options = await response.json();
+    if (!$('#dialog').open || !$('#options-loading')) return;
+    const disabled = options.canManageBackups ? '' : 'disabled';
+    showDialog(modal('Options', `<form id="options-form">
+      <label class="check-row options-autosave"><input id="options-autosave" type="checkbox" ${options.autosave ? 'checked' : ''}> Autosave every five minutes</label>
+      <p>Autosaves keep the shared design with a <b>-autosave_ddmmyy_hhmm</b> filename suffix, creating a separate backup every five minutes.</p>
+      <label class="check-row options-autosave"><input id="options-load-latest" type="checkbox" ${options.loadLatest ? 'checked' : ''}> When launching, load the most recent Saved Project in the Save Folder</label>
+      <p>New workshops start with the newest valid project file, including autosaves. Existing rooms keep their saved work.</p>
+      <div class="field"><label for="options-folder">Default Save Folder</label><input id="options-folder" value="${esc(options.saveFolder)}" required maxlength="4096" ${disabled}><small>Folder on the workshop computer. Default: Saved Projects.</small><button type="button" id="options-folder-reset" class="subtle" ${disabled}>Use Saved Projects folder</button></div>
+      <p>Backup and startup options apply to this workshop server.${options.canManageBackups ? '' : ' To change the save folder, open the workshop through localhost on the workshop computer.'}</p>
+      <div class="field"><label for="options-text-scale">UI Text scaling</label><div class="range-control"><input id="options-text-scale" type="range" min="50" max="200" step="5" value="${uiTextScale}"><output id="options-text-output" for="options-text-scale">${uiTextScale}%</output></div><small>50–200% · Default: 100%. Remembered in this browser.</small></div>
+      <p id="options-error" class="danger" role="alert" ${options.lastError ? '' : 'hidden'}>${esc(options.lastError)}</p>
+      <div class="modal-footer"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save options</button></div>
+    </form>`));
+    const originalScale = uiTextScale;
+    const restoreScale = () => applyTextScale(uiTextScale);
+    $('#dialog').addEventListener('close', restoreScale, { once: true });
+    $('#options-folder-reset').onclick = () => { $('#options-folder').value = options.defaultSaveFolder; };
+    $('#options-text-scale').oninput = e => {
+      const scale = applyTextScale(e.target.value);
+      $('#options-text-output').value = `${scale}%`;
+    };
+    $('#options-form').onsubmit = async e => {
+      e.preventDefault();
+      const form = e.currentTarget, button = form.querySelector('[type=submit]'), error = $('#options-error');
+      const scale = textScale($('#options-text-scale').value);
+      button.disabled = true; error.hidden = true;
+      try {
+        {
+          const result = await fetch('/api/options', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autosave: $('#options-autosave').checked, loadLatest: $('#options-load-latest').checked, ...(options.canManageBackups ? { saveFolder: $('#options-folder').value } : {}) }) });
+          const saved = await result.json();
+          if (!result.ok) throw Error(saved.error || 'Could not save options.');
+        }
+        uiTextScale = scale;
+        try { localStorage.setItem('workshop-text-scale', String(scale)); } catch {}
+        applyTextScale(scale);
+        if (form.isConnected) closeDialog();
+      } catch (failure) {
+        if (form.isConnected) { error.textContent = failure.message; error.hidden = false; error.scrollIntoView({ block: 'nearest' }); }
+        else applyTextScale(originalScale);
+      } finally { button.disabled = false; }
+    };
+  } catch (error) {
+    if ($('#options-loading')) $('#options-loading').textContent = error.message;
+  }
+}
+
+async function saveProject() {
+  if (pending.length || notePending || !connected || revision < 0) throw Error('Wait until changes are saved and the room is connected.');
+    const response = await fetch(`${endpoint}/save`, { method: 'POST' });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || 'Could not save the project.');
+    return `Saved ${result.filename} to ${result.folder}`;
+}
+
 function filesDialog() {
   showDialog(modal('Your workshop, to keep.',`<p>Changes save automatically on this server. Keep a project backup, or export a connected inventory for Excel and Google Sheets.</p><div class="files-grid"><button id="export-project">↧ Export project<small>Download a readable .json backup</small></button><button id="export-inventory">▦ Export spreadsheet<small>Recipes, challenges and progression · .xlsx</small></button><button id="import-project">↥ Import project<small>Replace this room with a saved project</small></button><button id="example-project">✧ Load example<small>A torch, light, rats, and a guard</small></button><button id="new-project">＋ Clear workshop<small>Start again with an empty library</small></button></div><div class="callout">Room <b>${esc(room)}</b> · Project backups contain the saved design. Spreadsheet exports can also capture your private playtest before you return to Edit.</div>`));
   $('#export-project').onclick=()=>{
     const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'}), url=URL.createObjectURL(blob), a=document.createElement('a');
     a.href=url;a.download=`plague-tale-go-${room}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Project exported.');
+  };
+  const saveButton = document.createElement('button');
+  saveButton.id = 'save-project';
+  saveButton.innerHTML = '↧ Save project<small>Save a .json backup to the default save folder</small>';
+  $('#dialog .files-grid').prepend(saveButton);
+  const saveStatus = document.createElement('p');
+  saveStatus.setAttribute('role', 'status');
+  $('#dialog .files-grid').after(saveStatus);
+  saveButton.onclick = async () => {
+    saveButton.disabled = true; saveStatus.textContent = 'Saving project…'; saveStatus.classList.remove('danger');
+    try { saveStatus.textContent = await saveProject(); }
+    catch (error) { saveStatus.textContent = error.message; saveStatus.classList.add('danger'); }
+    finally { saveButton.disabled = false; }
   };
   $('#import-project').onclick=()=>{if(play)return toast('Return to Edit before importing.');$('#import-file').click();};
   $('#export-inventory').onclick=inventoryDialog;
@@ -677,18 +802,34 @@ async function shareDialog() {
   const isLoopback=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
   const links=(isLoopback?config.urls:[location.origin]).map(url=>`${url}/?room=${room}`);
   if(!links.length)links.push(location.href);
-  showDialog(modal('A shared workbench.',`<p>Open this room on another Windows browser to edit together. Everyone sees the same tokens and levels as changes are saved.</p><label class="field-label">${isLoopback && !polling?'Classroom / local network link':'Workshop link'}</label>${links.map((url,n)=>`<div class="copy-row"><input readonly id="share-link-${n}" value="${esc(url)}" aria-label="Workshop share link"><button class="primary" data-copy="${n}">Copy</button></div>`).join('')}<div class="callout">Keep this server running. ${polling?'Keep the online launcher open and your PC awake. Share the session username and password separately. Everyone with those credentials can edit every room on this server. Updates arrive about every 1.5 seconds.':'Students need to be on the same local network; Windows may ask you to allow Node.js through the firewall on a private network. Anyone with network access and the room link can edit.'}</div><p style="margin-top:15px;font-size:11px">Room ID: <b>${esc(room)}</b> · <b>${esc($('#peer-count').textContent)}</b> participant(s). New rooms start at <span class="small-link">/?room=your-room-name</span>. Playtest changes stay in your browser.</p>`,'<button class="primary" data-close>Done</button>','LIVE WORKSHOP'));
+  showDialog(modal('A shared workbench.',`<p>Open this room on another Windows browser to edit together. Everyone sees the same tokens and levels as changes are saved.</p><label class="field-label">${isLoopback && !polling?'Classroom / local network link':'Workshop link'}</label>${links.map((url,n)=>`<div class="copy-row"><input readonly id="share-link-${n}" value="${esc(url)}" aria-label="Workshop share link"><button class="primary" data-copy="${n}">Copy</button></div>`).join('')}<div class="callout">Keep this server running. ${polling?'Keep the online launcher open and your PC awake. Share the session username and password separately. Everyone with those credentials can edit every room on this server. Updates arrive about every 1.5 seconds.':'Students need to be on the same local network; Windows may ask you to allow Node.js through the firewall on a private network. Anyone with network access and the room link can edit.'}</div><p style="margin-top:15px;font-size:0.846154rem">Room ID: <b>${esc(room)}</b> · <b>${esc($('#peer-count').textContent)}</b> participant(s). New rooms start at <span class="small-link">/?room=your-room-name</span>. Playtest changes stay in your browser.</p>`,'<button class="primary" data-close>Done</button>','LIVE WORKSHOP'));
   document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{const input=$(`#share-link-${b.dataset.copy}`);try{await navigator.clipboard.writeText(input.value);b.textContent='Copied';}catch{input.focus();input.select();toast('Link selected. Press Ctrl+C to copy.');}});
 }
 function levelSettings() {
   if(play)return;const l=level();
-  showDialog(modal('Set the scene.',`<form id="level-form"><div class="field"><label for="level-name">Level name</label><input id="level-name" required maxlength="80" value="${esc(l.name)}"></div><div class="field-row"><div class="field"><label for="level-width">Columns · 4–32</label><input type="number" id="level-width" min="4" max="32" value="${l.width}" required></div><div class="field"><label for="level-height">Rows · 4–24</label><input type="number" id="level-height" min="4" max="24" value="${l.height}" required></div></div><p>When making a level smaller, remove any tiles and pieces outside its new bounds first.</p><div class="modal-footer"><button type="button" class="danger" id="delete-level" ${project.levels.length===1?'disabled':''}>Delete level</button><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save level</button></div></form>`));
-  $('#level-form').onsubmit=e=>{e.preventDefault();const data={levelId:l.id,name:$('#level-name').value.trim(),width:Number($('#level-width').value),height:Number($('#level-height').value)};if(!data.name)return;try{applyAction(project,{type:'level.update',data});}catch{return toast('Remove tiles and tokens beyond the new level size before shrinking.');}if(dispatch({type:'level.update',data})===false)return;closeDialog();fitBoard();};
+  showDialog(modal('Set the scene.',`<form id="level-form"><div class="field"><label for="level-name">Level name</label><input id="level-name" required maxlength="80" value="${esc(l.name)}"></div><div class="field-row"><div class="field"><label for="level-width">Columns · 4–32</label><input type="number" id="level-width" min="4" max="32" value="${l.width}" required></div><div class="field"><label for="level-height">Rows · 4–24</label><input type="number" id="level-height" min="4" max="24" value="${l.height}" required></div></div><p>When making a level smaller, remove any tiles and pieces outside its new bounds first.</p><p id="level-form-error" class="danger" role="alert" hidden></p><div class="modal-footer"><button type="button" id="duplicate-level">Duplicate level</button><button type="button" class="danger" id="delete-level" ${project.levels.length===1?'disabled':''}>Delete level</button><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save level</button></div></form>`));
+  $('#level-form').onsubmit=e=>{e.preventDefault();const error=$('#level-form-error');error.hidden=true;error.textContent='';const data={levelId:l.id,name:$('#level-name').value.trim(),width:Number($('#level-width').value),height:Number($('#level-height').value)};if(!data.name)return;try{applyAction(project,{type:'level.update',data});}catch{error.textContent='Remove tiles and tokens beyond the new level size before shrinking.';error.hidden=false;error.scrollIntoView({block:'nearest'});return;}if(dispatch({type:'level.update',data})===false)return;closeDialog();fitBoard();};
   watchEditor($('#level-form'));
+  $('#duplicate-level').onclick=()=>{
+    const copy=copyLevel(l);
+    // Include the current settings draft in the duplicated level.
+    const data={levelId:copy.id,name:($('#level-name').value.trim()||l.name)+' copy',width:Number($('#level-width').value),height:Number($('#level-height').value)};
+    data.name=data.name.slice(0,80);
+    const error=$('#level-form-error');
+    try {
+      const withCopy=applyAction(project,{type:'level.add',data:copy});
+      const result=applyAction(withCopy,{type:'level.update',data});
+      const next=result.levels.find(item=>item.id===copy.id);
+      if(dispatch({type:'level.add',data:next})===false)return;
+    } catch(failure){error.textContent=failure.message;error.hidden=false;error.scrollIntoView({block:'nearest'});return;}
+    levelId=copy.id;selected=null;closeDialog();render();fitBoard();
+  };
   $('#delete-level').onclick=()=>confirmDialog('Delete this level?',`The level “${l.name}” and its placements will be removed. Token definitions stay in the library.`,'Delete level',()=>{dispatch({type:'level.delete',data:{levelId:l.id}});levelId=project.levels[0].id;selected=null;render();fitBoard();});
 }
 function example() {
   const p=newProject(), l=p.levels[0];l.name='A light in the dark';
+  l.width=14;l.height=11;l.tiles={};
+  for(let y=2;y<9;y++)for(let x=2;x<12;x++)l.tiles[`${x},${y}`]='floor';
   const add=(name,icon,rule,tags,color='#b8cf96',range=2,parentId=null)=>{const a={id:uid(),name,icon,rule,tags,color,range,parentId};p.assets.push(a);return a.id;};
   const torch=add('Torch','torch','A carried flame. Ask: how does the space around it change?',['Pickable','Light source'],'#edc47c');
   add('Pool of light','area','Rats avoid the lit area. This is a proposed rule; move rats by hand. Try changing the radius from 2 to 1.',['Radius','Safety'],'#edc47c',2,torch);
@@ -747,6 +888,15 @@ function connectionNode(key) {
 document.addEventListener('click', e=>{
   if(Date.now()<suppressClickUntil){e.preventDefault();return;}
   if(notePending && e.target.id!=='instance-note') saveNote();
+  const patrolSwatch=e.target.closest('[data-patrol-color]');if(patrolSwatch&&!play){updatePatrol({color:patrolSwatch.dataset.patrolColor});return;}
+  const patrolChoice=e.target.closest('[data-patrol]');if(patrolChoice){patrolId=patrolChoice.dataset.patrol;selected=null;staged=null;if(!play)tool='patrol';render();return;}
+  if(e.target.closest('#toggle-patrols')){showPatrols=!showPatrols;render();return;}
+  if(e.target.closest('#new-patrol')&&!play){newPatrol();return;}
+  if(e.target.closest('#swap-patrol')&&!play&&activePatrol()){updatePatrol({nodes:[...activePatrol().nodes].reverse()});return;}
+  if(e.target.closest('#clear-patrol')&&!play){updatePatrol({nodes:[]});return;}
+  if(e.target.closest('#delete-patrol')&&!play){dispatch({type:'patrol.delete',data:{levelId:level().id,id:patrolId}});return;}
+  if(e.target.closest('#use-patrol-color')&&activeInstance()&&activePatrol()){dispatch({type:'instance.update',data:{levelId:level().id,id:activeInstance().id,patrolColor:activePatrol().color}});return;}
+  if(e.target.closest('#clear-patrol-color')&&activeInstance()){dispatch({type:'instance.update',data:{levelId:level().id,id:activeInstance().id,patrolColor:null}});return;}
   const quantity=e.target.closest('[data-stack-adjust]');if(quantity&&play){playerInventory=adjustStack(playerInventory,quantity.dataset.stackAdjust,Number(quantity.dataset.delta));renderInventory();return;}
   const discardGraveyard=e.target.closest('[data-discard-graveyard]');if(discardGraveyard&&play){graveyard=graveyard.filter(i=>i.id!==discardGraveyard.dataset.discardGraveyard);renderInventory(true);return;}
   const discard=e.target.closest('[data-discard-inventory]');if(discard&&play){playerInventory=playerInventory.filter(i=>i.id!==discard.dataset.discardInventory);renderInventory();return;}
@@ -788,6 +938,7 @@ document.addEventListener('click', e=>{
   }
   switch(e.target.closest('button')?.id){
     case 'library-expand':expandLibrary(!$('#workshop-sidebar').classList.contains('library-expanded'));break;
+    case 'definition-only':showDefinitionOnly(!$('#workshop-sidebar').classList.contains('definition-only'));break;
     case 'inventory-toggle':inventoryExpanded=!inventoryExpanded;renderInventory();break;
     case 'graveyard-toggle':graveyardExpanded=!graveyardExpanded;renderInventory(true);break;
     case 'post-it-tool':toast('Drag Post-it from the floating toolbar onto the canvas.');break;
@@ -803,6 +954,7 @@ document.addEventListener('click', e=>{
     case 'create-tag':tagDialog();break;
     case 'guide-btn':case 'inspector-guide':guideDialog();break;
     case 'files-btn':filesDialog();break;
+    case 'options-btn':optionsDialog();break;
     case 'share-btn':shareDialog();break;
     case 'load-example':loadExample();break;
     case 'level-settings':levelSettings();break;
@@ -830,6 +982,10 @@ document.addEventListener('click', e=>{
   }
 });
 document.addEventListener('change',e=>{
+  if(e.target.matches('[data-patrol-hidden]')){dispatch({type:'patrol.update',data:{levelId:level().id,id:e.target.dataset.patrolHidden,hidden:!e.target.checked}});return;}
+  if(e.target.id==='patrol-color'&&!play){updatePatrol({color:e.target.value});return;}
+  if(e.target.id==='patrol-name'&&!play){updatePatrol({name:e.target.value.trim()||activePatrol().name});return;}
+  if(e.target.id==='instance-patrol-color'&&activeInstance()){dispatch({type:'instance.update',data:{levelId:level().id,id:activeInstance().id,patrolColor:e.target.value}});return;}
   if(e.target.matches('[data-exclusive-states]')){dispatch({type:'asset.update',data:{id:e.target.dataset.exclusiveStates,exclusiveStates:e.target.checked}});return;}
   if(e.target.id==='quick-width' && activeAsset()){if(e.target.checkValidity()&&e.target.value)dispatch({type:'asset.update',data:{id:activeAsset().id,width:Number(e.target.value)}});return;}
   if(e.target.id==='quick-range' && activeAsset())dispatch({type:'asset.update',data:{id:activeAsset().id,range:Number(e.target.value)}});
@@ -850,7 +1006,7 @@ $('#import-file').onchange=async e=>{
   try{const parsed=validateProject(JSON.parse(await file.text()));confirmDialog('Import this project?',`Replace the shared room with ${parsed.levels.length} level(s) and ${parsed.assets.length} token definition(s)?`,'Import project',()=>{selected=null;staged=null;dispatch({type:'project.replace',data:parsed});levelId=project.levels[0].id;render();fitBoard();toast('Project imported.');});}catch(error){toast(`Could not import: ${error.message}`);}
 };
 document.addEventListener('pointerdown',e=>{
-  if(tool==='link'&&e.target.closest('#board'))return;
+  if(['link','patrol'].includes(tool)&&e.target.closest('#board'))return;
   if(e.button!==0||$('#dialog').open||e.target.closest('[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
   if(tool==='postIt'&&e.target.closest('#board'))return;
   const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),note=e.target.closest('[data-post-it]');
@@ -943,15 +1099,21 @@ function dropToken(target,payload){
 }
 document.addEventListener('dragend',()=>{dragPayload=null;document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));});
 $('#board').addEventListener('pointerdown',e=>{
-  if(play||staged||['select','connect','unlink','link','postIt'].includes(tool)||e.button!==0||e.target.closest('[data-instance],[data-object-link],[data-post-it]'))return;
+  if(!play&&!staged&&tool==='patrol'&&e.button===0){
+    const pos=patrolPointerCell(e);if(!pos||!hasNode(level(),pos.x+','+pos.y))return;
+    if(!activePatrol()){toast('Create or select a patrol first.');return;}
+    e.preventDefault();paint={tile:'patrol',cells:new Set([pos.x+','+pos.y])};$('#board').setPointerCapture(e.pointerId);renderBoard();return;
+  }
+  if(play||staged||['patrol','select','connect','unlink','link','postIt'].includes(tool)||e.button!==0||e.target.closest('[data-instance],[data-object-link],[data-post-it]'))return;
   const cell=e.target.closest('.cell');if(!cell)return;
   e.preventDefault();paint={tile:painterTile(),cells:new Set([`${cell.dataset.x},${cell.dataset.y}`])};$('#board').setPointerCapture(e.pointerId);renderBoard();
 });
 $('#board').addEventListener('pointermove',e=>{
-  if(!paint)return;const cell=document.elementFromPoint(e.clientX,e.clientY)?.closest('.cell');
+  if(!paint)return;if(paint.tile==='patrol'){const pos=patrolPointerCell(e),key=pos&&pos.x+','+pos.y;if(key&&hasNode(level(),key)&&!paint.cells.has(key)){paint.cells.add(key);renderBoard();}return;}const cell=document.elementFromPoint(e.clientX,e.clientY)?.closest('.cell');
   if(cell){const key=`${cell.dataset.x},${cell.dataset.y}`;if(!paint.cells.has(key)){paint.cells.add(key);renderBoard();}}
 });
-function finishPaint(){if(!paint)return;const data={levelId:level().id,cells:[...paint.cells].filter(key=>paint.tile==='node'?!hasNode(level(),key):paint.tile==='empty'?!!level().tiles[key]||hasNode(level(),key):level().tiles[key]!==paint.tile),tile:paint.tile};paint=null;if(data.cells.length)dispatch({type:'tile.paint',data});else renderBoard();}
+function patrolPointerCell(e){const rect=$('#board').getBoundingClientRect(),x=Math.floor((e.clientX-rect.left)/rect.width*level().width),y=Math.floor((e.clientY-rect.top)/rect.height*level().height);return x>=0&&y>=0&&x<level().width&&y<level().height?{x,y}:null;}
+function finishPaint(){if(!paint)return;if(paint.tile==='patrol'){const nodes=[...new Set([...(activePatrol()?.nodes||[]),...paint.cells])];paint=null;suppressClickUntil=Date.now()+100;updatePatrol({nodes});return;}const data={levelId:level().id,cells:[...paint.cells].filter(key=>paint.tile==='node'?!hasNode(level(),key):paint.tile==='empty'?!!level().tiles[key]||hasNode(level(),key):level().tiles[key]!==paint.tile),tile:paint.tile};paint=null;if(data.cells.length)dispatch({type:'tile.paint',data});else renderBoard();}
 $('#board').addEventListener('pointerup',finishPaint);
 $('#board').addEventListener('pointercancel',()=>{paint=null;renderBoard();});
 document.addEventListener('keydown',e=>{

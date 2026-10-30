@@ -34,12 +34,13 @@ export function paintLevelTiles(level, cells, tile) {
       if (tile === 'empty') delete level.tiles[key]; else level.tiles[key] = tile;
     }
   }
+  for(const patrol of level.patrols || [])patrol.nodes=patrol.nodes.filter(key=>hasNode(level,key));
   level.blockedLinks = level.blockedLinks.filter(key => adjacentNodes(level, ...key.split('|')));
 }
 export function blankLevel(id = uid(), name = 'The quiet courtyard') {
   const tiles = {};
-  for (let y = 2; y < 9; y++) for (let x = 2; x < 12; x++) tiles[`${x},${y}`] = 'floor';
-  return { id, name, width: 14, height: 11, tiles, blockedLinks: [], objectLinks: [], instances: [], postIts: [] };
+  for (let y = 1; y < 8; y++) for (let x = 1; x < 9; x++) tiles[`${x},${y}`] = 'floor';
+  return { id, name, width: 10, height: 9, tiles, blockedLinks: [], objectLinks: [], patrols: [], instances: [], postIts: [] };
 }
 export const newProject = () => ({ version: 3, title: 'Plague Tale GO', tags: [], assets: [], levels: [blankLevel()], cardDraws: [] });
 // A canonical key makes a connection identical from either endpoint.
@@ -51,8 +52,8 @@ export function adjacentNodes(l, a, b) {
 }
 export const nodesConnected = (l, a, b) => adjacentNodes(l,a,b) && !(l.blockedLinks || []).includes(linkKey(a,b));
 function migrateProject(input) {
-  if(input?.version===3 && (input.cardDraws===undefined || input.levels?.some(l=>l.objectLinks===undefined || l.postIts===undefined))) {
-    const p=clone(input);p.cardDraws ??=[];for(const l of p.levels){l.objectLinks ??=[];l.postIts ??=[];}return p;
+  if(input?.version===3 && (input.cardDraws===undefined || input.levels?.some(l=>l.objectLinks===undefined || l.postIts===undefined || l.patrols===undefined))) {
+    const p=clone(input);p.cardDraws ??=[];for(const l of p.levels){l.objectLinks ??=[];l.postIts ??=[];l.patrols ??=[];}return p;
   }
   if(input?.version===2) {
     const p=clone(input);p.version=3;
@@ -194,8 +195,14 @@ export function validateProject(p) {
       const [a,b,...extra] = key.split('|');
       if (extra.length || key !== linkKey(a,b) || !adjacentNodes(l,a,b)) throw Error('Invalid node connection.');
     }
+    if(!Array.isArray(l.patrols)||l.patrols.length>1000)throw Error('Invalid patrol paths.');
+    for(const patrol of l.patrols){
+      reserve(patrol.id);
+      if(typeof patrol.name!=='string'||!patrol.name.trim()||patrol.name.length>80||!/^#[0-9a-f]{6}$/i.test(patrol.color)||typeof patrol.hidden!=='boolean'||!Array.isArray(patrol.nodes)||patrol.nodes.length>l.width*l.height||new Set(patrol.nodes).size!==patrol.nodes.length||patrol.nodes.some(key=>typeof key!=='string'||!hasNode(l,key)))throw Error('Invalid patrol path. Choose existing nodes.');
+    }
     for (const i of l.instances) {
       reserve(i.id);
+      if(i.patrolColor!=null&&!/^#[0-9a-f]{6}$/i.test(i.patrolColor))throw Error('Invalid placement color dot.');
       if(i.locked!==undefined&&typeof i.locked!=='boolean')throw Error('Invalid scenery lock.');
       if(i.stateOverrides!==undefined){
         const allowed=new Set(descendants(p,i.assetId).filter(isState).map(s=>s.id));
@@ -327,9 +334,15 @@ export function applyAction(input, action) {
         const dx=(d.x??i.x)-i.x, dy=(d.y??i.y)-i.y;
         if(dx || dy)i.direction=Math.abs(dx)>=Math.abs(dy)?(dx>0?90:270):(dy>0?180:0);
       }
-      for (const key of ['x','y','rotation','direction','note','locked']) if (key in d) i[key] = d[key]; break;
+      for (const key of ['x','y','rotation','direction','note','locked','patrolColor']) if (key in d) i[key] = d[key]; break;
     }
     case 'instance.delete': { const l = level();if(l.instances.find(i=>i.id===d.id)?.locked)throw Error('Unlock this scenery piece before removing it.');l.instances = l.instances.filter(i => i.id !== d.id); pruneLinks(l); break; }
+    case 'patrol.add': level().patrols.push(d.patrol);break;
+    case 'patrol.update': {
+      const patrol=level().patrols.find(p=>p.id===d.id);if(!patrol)throw Error('Patrol no longer exists.');
+      for(const key of ['name','color','nodes','hidden'])if(key in d)patrol[key]=d[key];break;
+    }
+    case 'patrol.delete': level().patrols=level().patrols.filter(p=>p.id!==d.id);break;
     case 'objectLink.add': level().objectLinks.push(d.link); break;
     case 'objectLink.update': {
       const link=level().objectLinks.find(link=>link.id===d.id);if(!link)throw Error('Link no longer exists.');

@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {newProject,applyAction,validateProject} from '../public/model.js';
+import {copyLevel} from '../public/editing.js';
+const setup=()=>{let p=newProject();const levelId=p.levels[0].id;p=applyAction(p,{type:'tile.paint',data:{levelId,cells:['2,2','3,2','4,2'],tile:'node'}});return {p,levelId};};
+test('patrols overlap, reverse independently, persist and copy with unique IDs',()=>{
+  let {p,levelId}=setup();
+  for(const id of ['patrol-a','patrol-b'])p=applyAction(p,{type:'patrol.add',data:{levelId,patrol:{id,name:id,color:'#e89750',nodes:['2,2','3,2','4,2'],hidden:false}}});
+  const original=structuredClone(p);
+  p=applyAction(p,{type:'patrol.update',data:{levelId,id:'patrol-b',nodes:['4,2','3,2','2,2'],color:'#123456',hidden:true}});
+  assert.deepEqual(p.levels[0].patrols[0],original.levels[0].patrols[0]);
+  assert.equal(p.levels[0].patrols[1].nodes[0],'4,2');
+  const loaded=validateProject(JSON.parse(JSON.stringify(p))),copy=copyLevel(loaded.levels[0]);
+  assert.notEqual(copy.patrols[0].id,loaded.levels[0].patrols[0].id);
+  assert.deepEqual(copy.patrols[1].nodes,['4,2','3,2','2,2']);assert.equal(copy.patrols[1].hidden,true);
+  p=applyAction(p,{type:'tile.paint',data:{levelId,cells:['3,2'],tile:'wall'}});
+  assert.deepEqual(p.levels[0].patrols[0].nodes,['2,2','4,2']);
+  p=applyAction(p,{type:'patrol.delete',data:{levelId,id:'patrol-a'}});assert.equal(p.levels[0].patrols.length,1);
+});
+test('legacy maps migrate without mutation and invalid patrol data is rejected',()=>{
+  let {p,levelId}=setup();delete p.levels[0].patrols;
+  assert.deepEqual(validateProject(p).levels[0].patrols,[]);assert.equal(p.levels[0].patrols,undefined);
+  const patrol={id:'p',name:'Patrol',color:'#123456',nodes:['2,2'],hidden:false};
+  for(const changes of [{nodes:['0,0']},{nodes:['2,2','2,2']},{color:'red'},{hidden:1},{id:levelId}])assert.throws(()=>applyAction(p,{type:'patrol.add',data:{levelId,patrol:{...patrol,...changes}}}));
+});
+test('color dots apply to individual instances, survive copies and movement, and can be removed',()=>{
+  let {p,levelId}=setup();p.assets.push({id:'guard',name:'Guard',icon:'guard',rule:'',tags:[],color:'#123456',range:1,parentId:null});
+  p=applyAction(p,{type:'instance.add',data:{levelId,instance:{id:'g',assetId:'guard',x:2,y:2,rotation:0}}});
+  p=applyAction(p,{type:'instance.update',data:{levelId,id:'g',patrolColor:'#fedcba'}});
+  p=applyAction(p,{type:'instance.update',data:{levelId,id:'g',x:3}});
+  assert.equal(copyLevel(p.levels[0]).instances[0].patrolColor,'#fedcba');assert.equal(p.assets[0].patrolColor,undefined);
+  assert.throws(()=>applyAction(p,{type:'instance.update',data:{levelId,id:'g',patrolColor:'red'}}));
+  p=applyAction(p,{type:'instance.update',data:{levelId,id:'g',patrolColor:null}});assert.equal(p.levels[0].instances[0].patrolColor,null);
+});

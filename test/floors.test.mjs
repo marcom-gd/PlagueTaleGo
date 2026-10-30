@@ -46,7 +46,7 @@ test('nodes overlay every floor type, connect across heights and survive repaint
   assert.ok(hasNode(project.levels[0],'1,0'));assert.equal(nodesConnected(project.levels[0],'0,0','1,0'),false);
   const loaded=validateProject(JSON.parse(JSON.stringify(project))),copy=copyLevel(loaded.levels[0]);
   assert.deepEqual(copy.nodes,loaded.levels[0].nodes);assert.deepEqual(copy.tiles,loaded.levels[0].tiles);
-  assert.deepEqual(inventoryData(project).levels[0].slice(5,9),[3,73,0,73]);
+  assert.deepEqual(inventoryData(project).levels[0].slice(5,9),[3,59,0,59]);
   paint(['1,0'],'wall');level=project.levels[0];
   assert.equal(hasNode(level,'1,0'),false);assert.deepEqual(level.blockedLinks,[]);
   paint(['0,0'],'empty');assert.equal(hasNode(project.levels[0],'0,0'),false);assert.equal(project.levels[0].tiles['0,0'],undefined);

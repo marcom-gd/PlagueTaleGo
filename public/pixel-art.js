@@ -46,6 +46,25 @@ export function detailedPixels(name,variant,color,base) {
     poly([[4,7],[9,3],[17,4],[23,10],[22,17],[17,23],[10,22],[4,17],[2,12]],ink);
     poly([[5,8],[10,5],[16,6],[21,11],[20,16],[16,21],[11,20],[6,16],[4,12]],'#a85432');
     oval(11,11,6,5,'#cf8045');line(7,9,11,7,'#f0b56a',2);line(15,17,18,13,'#783d2b',2);rect(9,16,2,2,'#e8a25b');
+  } else if(name==='cookingPot') {
+    // Broad iron pot with loop handles, a rolled rim, and cool metal highlights.
+    oval(5,15,4,5,ink);oval(5,15,2,3,null);
+    oval(27,15,4,5,ink);oval(27,15,2,3,null);
+    poly([[6,11],[26,11],[25,24],[22,28],[10,28],[7,24]],ink);
+    poly([[8,13],[24,13],[23,23],[21,26],[11,26],[9,23]],steel);
+    poly([[18,14],[24,13],[23,23],[21,26],[17,26]],'#566473');
+    line(10,17,11,23,shine,2);line(12,25,17,25,'#a7b7c4');
+    oval(16,11,11,4,ink);oval(16,10,10,3,shine);
+    oval(16,11,8,2,'#46515e');line(10,9,21,9,'#eef3f6');
+    rect(7,14,2,2,shine);rect(23,14,2,2,shine);
+  } else if(name==='hole') {
+    // Uneven earth rim surrounding a dark opening with a visible inner wall.
+    poly([[2,17],[5,12],[10,10],[14,11],[19,9],[25,12],[29,16],[30,21],[25,25],[18,27],[11,26],[5,24]],ink);
+    poly([[3,17],[6,13],[11,11],[15,12],[19,10],[24,13],[28,17],[28,21],[24,24],[18,25],[11,24],[6,23]],wood);
+    oval(16,18,11,6,'#533e34');oval(16,19,9,4,'#201e29');
+    line(7,14,11,12,warm,2);line(20,12,24,14,warm);
+    line(7,22,11,24,warm);line(20,24,25,22,'#a8754e');
+    rect(3,23,2,2,wood);rect(27,25,3,2,wood);rect(11,28,3,1,warm);
   } else if(name==='brazier') {
     // Raised iron fire bowl, with burning and cold-coal states.
     line(10,22,6,30,ink,3);line(21,22,25,30,ink,3);line(15,23,15,30,ink,3);
