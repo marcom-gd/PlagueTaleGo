@@ -18,6 +18,7 @@ export function manipulation({getProject,getLevel,getSelected,setSelected,dispat
     if(snap()&&originals.some(i=>!hasNode(getLevel(),`${i.x+dx},${i.y}`)))return toast('Snap to Nodes requires a node for every copied piece.');
     const additions=originals.map(i=>({...clone(i),id:uid(),x:i.x+dx,locked:false}));
     const ids=new Map(originals.map((i,index)=>[i.id,additions[index].id]));
+    for(const i of additions)if(i.moveTarget?.type==='object'&&ids.has(i.moveTarget.id))i.moveTarget.id=ids.get(i.moveTarget.id);
     const copiedLinks=links.map(link=>({...clone(link),id:uid(),instanceIds:link.instanceIds.filter(id=>ids.has(id)).map(id=>ids.get(id))})).filter(link=>link.instanceIds.length>=2);
     if(dispatch({type:'instance.batch',data:{levelId:getLevel().id,additions,links:copiedLinks}})!==false){selection=new Set(additions.map(i=>i.id));setSelected({type:'instance',id:additions.at(-1).id});render();}
   };

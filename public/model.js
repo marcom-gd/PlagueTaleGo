@@ -1,4 +1,5 @@
 import { iconNames, iconVariants, defaultVariant } from './icons.js';
+import { validateBehaviours, validateMoveTarget, validateReferenceOverrides } from './behaviour-schema.js';
 // randomUUID is unavailable on plain HTTP LAN addresses, unlike localhost.
 export const uid = () => {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -85,7 +86,7 @@ export function descendants(project, id, visited = new Set()) {
 export const isState = a => a?.kind === 'state';
 export const isParameter = a => !isState(a) && ['area','sight','cone','rectangle','cross'].includes(a?.icon);
 // Uses keep their own hierarchy identity, while these properties belong to the definition.
-const parameterKeys=['name','icon','variant','rule','tags','color','range','width','rotation','direction','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds'];
+const parameterKeys=['name','icon','variant','rule','tags','color','range','width','rotation','direction','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','behaviours'];
 export const parameterDefinition = (project,a) => a?.parameterId ? project.assets.find(b=>b.id===a.parameterId) : a;
 function syncParameters(p) {
   for(const use of p.assets.filter(a=>a.parameterId)) {
@@ -124,6 +125,8 @@ export function validateProject(p) {
   if (!p || p.version !== 3 || !Array.isArray(p.tags) || p.tags.length > 500 || !Array.isArray(p.assets) || !Array.isArray(p.levels) || !p.levels.length || p.levels.length > 30 || p.assets.length > 500) throw Error('This is not a supported workshop project.');
   if (typeof p.title !== 'string' || p.title.length > 120) throw Error('Invalid project title.');
   const ids = new Set();
+  if(p.behaviourOrder!==undefined&&(!Array.isArray(p.behaviourOrder)||p.behaviourOrder.length>15000||new Set(p.behaviourOrder).size!==p.behaviourOrder.length||p.behaviourOrder.some(id=>typeof id!=='string'||!id||id.length>100)))throw Error('Invalid behaviour resolution order.');
+  const behaviourIds=new Set();
   const reserve = id => { if (typeof id !== 'string' || !id || id.length > 100 || ids.has(id)) throw Error('Invalid or duplicate item ID.'); ids.add(id); };
   if(!Array.isArray(p.cardDraws)||p.cardDraws.length>1000)throw Error('Invalid card history.');
   const drawn=new Set();
@@ -143,6 +146,8 @@ export function validateProject(p) {
   }
   for (const a of p.assets) {
     reserve(a.id);
+    validateBehaviours(a,isParameter(a));
+    if(!a.parameterId)for(const b of a.behaviours||[]){if(behaviourIds.has(b.id))throw Error('Duplicate behaviour ID.');behaviourIds.add(b.id);}
     if(a.exclusiveStates!==undefined&&typeof a.exclusiveStates!=='boolean')throw Error('Invalid exclusive states option.');
     for(const key of ['autoFacing','followTokenFacing'])if(a[key]!==undefined && typeof a[key]!=='boolean')throw Error('Invalid facing option.');
     if(a.direction!=null && ![0,90,180,270].includes(a.direction))throw Error('Invalid token direction.');
@@ -169,6 +174,7 @@ export function validateProject(p) {
   }
   for (const l of p.levels) {
     reserve(l.id);
+    validateReferenceOverrides(l.referenceOverrides);
     if (typeof l.name !== 'string' || l.name.length > 80 || !Number.isInteger(l.width) || !Number.isInteger(l.height) || l.width < 4 || l.width > 32 || l.height < 4 || l.height > 24 || !l.tiles || !Array.isArray(l.instances) || l.instances.length > 1000) throw Error('Invalid level.');
     if(!Array.isArray(l.postIts)||l.postIts.length>500)throw Error('Too many post-its in this level.');
     for(const note of l.postIts){
@@ -202,6 +208,9 @@ export function validateProject(p) {
     }
     for (const i of l.instances) {
       reserve(i.id);
+      if(i.moveTarget!==undefined&&i.moveTarget!==null)validateMoveTarget(i.moveTarget);
+      validateReferenceOverrides(i.referenceOverrides);
+      if(i.patrolProgress!==undefined&&(!i.patrolProgress||typeof i.patrolProgress!=='object'||Array.isArray(i.patrolProgress)||Object.entries(i.patrolProgress).some(([id,v])=>!id||!['start','end'].includes(v))))throw Error('Invalid patrol progress.');
       if(i.patrolColor!=null&&!/^#[0-9a-f]{6}$/i.test(i.patrolColor))throw Error('Invalid placement color dot.');
       if(i.locked!==undefined&&typeof i.locked!=='boolean')throw Error('Invalid scenery lock.');
       if(i.stateOverrides!==undefined){
@@ -225,6 +234,11 @@ export function applyAction(input, action) {
   const level = () => { const l = p.levels.find(l => l.id === d.levelId); if (!l) throw Error('Level no longer exists.'); return l; };
   const pruneLinks=l=>{l.objectLinks=l.objectLinks.map(link=>({...link,instanceIds:link.instanceIds.filter(id=>l.instances.some(i=>i.id===id))})).filter(link=>link.instanceIds.length>=2);};
   switch (action.type) {
+    case 'behaviour.configure': {
+      const next=applyAction(p,{type:'asset.update',data:{id:d.id,behaviours:d.behaviours}});
+      return applyAction(next,{type:'behaviour.order',data:{ids:d.ids}});
+    }
+    case 'behaviour.order': p.behaviourOrder=d.ids;break;
     case 'asset.compose': {
       const existing=p.assets.find(a=>a.id===d.asset.id);
       const savedAsset=isParameter(d.asset)&&!d.asset.parameterId&&d.asset.parentId?{...d.asset,parentId:existing?.parentId||null}:d.asset;
@@ -296,7 +310,7 @@ export function applyAction(input, action) {
       const a=parameterDefinition(p,target);
       if(target.parameterId && 'icon' in d && !['area','sight','cone','rectangle','cross'].includes(d.icon))throw Error('A reusable parameter needs a parameter shape.');
       if(!target.parameterId && isParameter(a) && 'icon' in d && !['area','sight','cone','rectangle','cross'].includes(d.icon) && p.assets.some(b=>b.parameterId===a.id))throw Error('Detach all uses before changing this parameter into a token.');
-      for (const key of ['name','icon','variant','kind','enabled','rule','tags','color','range','width','rotation','direction','autoFacing','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','parentId','exclusiveStates']) if (key in d) a[key] = d[key];
+      for (const key of ['name','icon','variant','kind','enabled','rule','tags','color','range','width','rotation','direction','autoFacing','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','parentId','exclusiveStates','behaviours']) if (key in d) a[key] = d[key];
       if(target.parameterId && 'parentId' in d){target.parentId=d.parentId;a.parentId=null;}
       if(d.exclusiveStates===true){const enabled=p.assets.filter(b=>isState(b)&&b.parentId===a.id&&b.enabled);for(const sibling of enabled.slice(0,-1))sibling.enabled=false;}
       if(d.enabled&&isState(a)&&p.assets.find(b=>b.id===a.parentId)?.exclusiveStates)for(const sibling of p.assets.filter(b=>isState(b)&&b.parentId===a.parentId&&b.id!==a.id))sibling.enabled=false;
@@ -334,7 +348,7 @@ export function applyAction(input, action) {
         const dx=(d.x??i.x)-i.x, dy=(d.y??i.y)-i.y;
         if(dx || dy)i.direction=Math.abs(dx)>=Math.abs(dy)?(dx>0?90:270):(dy>0?180:0);
       }
-      for (const key of ['x','y','rotation','direction','note','locked','patrolColor']) if (key in d) i[key] = d[key]; break;
+      for (const key of ['x','y','rotation','direction','note','locked','patrolColor','moveTarget']) if (key in d) i[key] = d[key]; break;
     }
     case 'instance.delete': { const l = level();if(l.instances.find(i=>i.id===d.id)?.locked)throw Error('Unlock this scenery piece before removing it.');l.instances = l.instances.filter(i => i.id !== d.id); pruneLinks(l); break; }
     case 'patrol.add': level().patrols.push(d.patrol);break;

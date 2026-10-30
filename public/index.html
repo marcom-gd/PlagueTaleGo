@@ -29,6 +29,11 @@
     <section class="editor">
       <div class="editor-heading"><div><div class="eyebrow">THE LEVEL EDITOR</div><h1 id="level-title">The quiet courtyard</h1><p>Build a place. Give its pieces meaning.</p></div><div class="mode-switch"><button class="active" id="edit-mode">✎ Edit</button><button id="play-mode">▷ Playtest</button></div></div>
       <div class="level-bar"><div id="level-tabs" class="level-tabs"></div><button id="add-level" title="Create a level" aria-label="Create a level">＋</button><button id="level-settings" class="level-settings" title="Level settings">⚙ <span>Level settings</span></button></div>
+      <nav id="turn-toolbar" class="turn-toolbar" aria-label="Playtest turns" hidden>
+        <strong id="turn-label" aria-live="polite">Ready to start</strong>
+        <button id="previous-turn" disabled>← Previous turn</button><button id="next-turn" class="primary">Start turn 1 →</button>
+        <span class="turn-toolbar-divider"></span><button id="save-turns">Save sequence</button><button id="load-turns">Load sequence</button><button id="clear-turns">Clear sequence</button><button id="turn-log">Resolution log</button>
+      </nav>
       <div class="workshop-toolbar" aria-label="Notes and design cards">
         <div class="annotation-tools"><button id="post-it-tool" aria-pressed="false" title="Add a post-it · P">▧ <span>Post-it</span></button><div id="post-it-colors" role="group" aria-label="Post-it color"></div></div>
         <div class="deck-tools"><button data-deck="experiments"></button><button data-deck="challenges"></button></div>
@@ -42,7 +47,7 @@
         <div class="board-viewport" id="board-viewport"><div id="board" class="board" role="grid" aria-label="Level grid"></div></div>
         <div class="canvas-caption"><span class="caption-star">✧</span><span id="canvas-hint">An empty stage for your ideas.<br><b>Start with a token, or shape the ground.</b></span></div>
         <div class="zoom-control"><button id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-label">100%</span><button id="zoom-in" aria-label="Zoom in">＋</button><button id="zoom-fit" title="Fit to canvas">⌗</button></div>
-        <div id="play-banner" hidden>MANUAL PLAYTEST <span>Pieces are private. Notes & cards are saved.</span><button id="reset-play">↺ Reset</button></div>
+        <div id="play-banner" hidden>PLAYTEST <span>Pieces & turns are private. Notes & cards are saved.</span><button id="reset-play">↺ Reset</button></div>
       </div>
       <footer class="editor-footer"><span><kbd>Ctrl+C/V</kbd> Copy/paste <span class="footer-divider">·</span> <kbd>R</kbd> Rotate <span class="footer-divider">·</span> <kbd>Del</kbd> Remove <span class="footer-divider">·</span> <kbd>Esc</kbd> Deselect</span><div><button id="undo" title="Undo (Ctrl+Z)">↶</button><button id="redo" title="Redo (Ctrl+Y)">↷</button><span id="token-count">0 tokens placed</span></div></footer>
     </section>
@@ -75,6 +80,7 @@
       <button class="step-note-close" data-close-step>Back to the workbench <span aria-hidden="true">↗</span></button>
     </div>
   </dialog>
+  <input type="file" id="import-turns" accept=".json,application/json" hidden>
   <dialog id="welcome-dialog" aria-label="Welcome to the workshop"></dialog><div id="live-cursors" aria-hidden="true"></div><input type="file" id="import-file" accept=".json,application/json" hidden>
   <script type="module" src="/app.js"></script>
 </body>

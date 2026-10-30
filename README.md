@@ -1,6 +1,6 @@
 # Plague Tale GO · Atomic Parameters Workshop
 
-A local web tabletop for teaching game design through atomic parameters. Original pixel sprites, plain-language token rules, and no automated game logic. Requires **Node.js 20+**; there are no package dependencies and no build step.
+A local web tabletop for teaching game design through atomic parameters. Original pixel sprites, plain-language token rules, and optional turn behaviours for private playtests. Requires **Node.js 20+**; there are no package dependencies and no build step.
 
 ## Start on Windows
 
@@ -101,7 +101,28 @@ Use **Link objects (L)** in the canvas toolbar to connect two or more placed obj
 
 Area of effect uses Manhattan distance: a **diamond** of grid cells around the placement. Line of sight is a **straight line** in its facing direction (up at 0°, right at 90°). Selecting a piece shows its own and all nested overlays. The eye button shows overlays for every placed token. Color and range belong to definitions; rotation belongs to placements.
 
-These overlays are visual rulers. Walls do not clip them. The application does not enforce movement, collision, turns, light, pickup rules, enemy behavior, or victories. Overlapping pieces are allowed; the most recently placed piece is on top. Move or remove it to reach the others. Children travel as parameter definitions, not additional movable pieces.
+Overlays are visual rulers and define the cells used by effect behaviours. Enable **Occluded by Walls** to clip an effect. Without assigned behaviours, play remains manual. You can still move and stack objects freely by hand; automated movement uses connected, free path nodes. Children travel as parameter definitions, not additional movable pieces.
+
+### Playtest turns and behaviours
+
+Select a token, state, or parameter in Edit mode and choose **Behaviours** in its inspector. **Move To** can be assigned to any of these; **Expand** and **Apply Effect** belong to an effect parameter. Parameter behaviours are shared by all attached uses. Place an effect under a state to gate it: inactive states and all their descendants do not act. A Move To assigned directly to a state moves the placed parent object while that state is active.
+
+The horizontal toolbar appears in **Playtest**. **Start turn 1** resolves the first turn; **Next turn** resolves another. **Previous turn** restores the previous snapshot, including every level, object position, individual state, current move target, patrol direction, inventory, and graveyard. Next replays an existing future snapshot; changing pieces or settings after going back discards that future and resolves a new branch. Manual changes are captured when you navigate or save. Turn 0 is the layout before the first turn.
+
+**Save sequence** downloads a separate JSON file containing all turn snapshots and the current position in the sequence. **Load sequence** validates and replaces your private playtest with that file, including its object definitions; it does not import it into the shared design. **Clear sequence** (or Reset) restores the starting layout, empties the trays, and returns to turn 0. Sequences support 200 turns and imports up to 50 MB. Save before leaving Playtest or refreshing. Notes and design cards remain shared room observations and are not rewound or imported by turn playback.
+
+- **Expand:** at turn start, duplicate the placed object with its hierarchy, state overrides and placement properties onto existing path nodes highlighted by the effect. By default, skip nodes already containing the same object type. An optional stacking switch allows additional copies. New copies first act on the next turn. The 1,000 placements per level limit still applies; a turn exceeding it leaves the previous state intact.
+- **Apply Effect:** choose eligible library object types (an empty selected list affects nothing), or Any object type. Uses the effect's current shape, rotation, facing and wall occlusion. The source and effect markers are excluded. Choose **Switch State**, **Send to Graveyard**, **Set Move Target**, or **Flush**.
+- **Switch State:** choose an existing state ID from the suggestions, or enter a state name/key to match a state in each target's own hierarchy. Enable or disable it for that piece only. Enabling also enables ancestor states and respects exclusive sibling groups. Objects without that state are skipped.
+- **Send to Graveyard:** remove matching objects in the area, retaining their individual states and targets in the graveyard. Drag them back to restore them. Links losing too many members are removed.
+- **Set Move Target:** give matching objects a target of **Self** (the object carrying the effect), a custom position, or another specific canvas object. Object targets track their current position. The placement inspector also offers **Set move target** for initial/manual targets; Self there means stay in place.
+- **Flush:** start with matching objects caught in the effect, then send each continuous chain of the same object type to the graveyard, even beyond the area. Connections use horizontal/vertical touching cells, including stacked instances; they do not require path nodes. Diagonals, gaps, inactive instances and different object types do not extend a chain. The source is excluded. Only the initial catch uses effect geometry and wall occlusion.
+- **Move To:** move up to X free connected path nodes per turn (1–100). **Current Move Target** follows a shortest available path to the target; an occupied object target is approached to an adjacent free node. Missing or unreachable targets cause no movement. Active objects block movement; effect markers and inactive objects do not. Broken node connections are respected, locked scenery stays still, and Auto-facing follows each step.
+- **Patrol Start / End:** choose a saved patrol, or match the placement's patrol color dot. Start/End chooses the initial destination; the object follows the saved node order back and forth, reversing at each endpoint. An off-route object first travels to the chosen endpoint. Disconnected or occupied route segments stop movement. Patrol progress survives turn navigation, save/load and copies of levels.
+
+Use **⇅ Behaviour resolution order** in the canvas tools, or **Resolution order** in the inspector, to rearrange behaviours with ↑ / ↓. The order is saved with the project and can also be changed privately during Playtest. A fixed queue of existing placements resolves across all levels, top to bottom, then in saved placement order. State activity, positions and eligible objects are checked as each behaviour resolves, so an earlier state change or removal can suppress a later action. The **Resolution log** shows what ran and how many objects or nodes it affected.
+
+Restart the workshop server and refresh browsers after installing this feature. Existing projects need no conversion; objects without behaviours retain manual play.
 
 ### Shortcuts
 
