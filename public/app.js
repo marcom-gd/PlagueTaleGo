@@ -11,7 +11,9 @@ import { applyTextScale, textScale } from './ui-preferences.js';
 import { copyLevel } from './editing.js';
 import { behaviourEditor } from './behaviour-editor.js';
 import { behaviourNames, effectActions } from './behaviour-schema.js';
-import { createSequence, captureSequence, nextTurn, previousTurn, validateSequence } from './turn-sequence.js';
+import { createSequence, captureSequence, nextTurn, previousTurn, validateSequence, eventTurn } from './turn-sequence.js';
+import { availableUses, useObject, eventsAdvanceTurn, movementEvents } from './behaviours.js';
+import { checkMovement, effectOverlay } from './behaviour-areas.js';
 import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles } from './model.js';
 const $ = s => document.querySelector(s);
 let uiTextScale = 100;
@@ -56,6 +58,7 @@ let project = newProject(), authoritative = clone(project), revision = -1, pendi
 let levelId, selected = null, staged = null, tool = 'select', search = '', zoom = 1, play = null, playStart = null, historyStack = [], redoStack = [];
 let playStartRevision = null;
 let turnSequence=null;
+let eventTurnQueued=false;
 let playerInventory=[], inventoryExpanded=false, graveyard=[], graveyardExpanded=false;
 let dragPayload = null, showAll = false, paint = null, toastTimer, didInitialFit = false;
 let notePending = null, noteTimer;
@@ -187,7 +190,10 @@ function dispatch(action, {record = true} = {}) {
   if (serverNeedsRestart) {toast('Restart the workshop server, then refresh to use this update.');return false;}
   // Observations and deck history are shared even while pieces are playtested privately.
   if (play && !action.type.startsWith('postIt.') && !action.type.startsWith('card.')) {
-    try { play = applyAction(play, action); render();return true; } catch(e) { toast(e.message);return false; }
+    try {
+      const before=turnState(),next=applyAction(play,action);checkMovement(play,next);
+      play=next;notifyPlayEvents(before,movementEvents(before.project,play));render();return true;
+    } catch(e) { toast(e.message);return false; }
   }
   if (revision < 0) {toast('Wait for the workshop to connect.');return false;}
   try {
@@ -297,9 +303,11 @@ function collectInInventory(payload,isGraveyard=false) {
   if(!play||isGraveyard&&payload.type!=='instance')return;
   try{
     if(notePending)saveNote();
+    const before=turnState(),oldIds=new Set(playerInventory.flatMap(s=>s.items.map(i=>i.id)));
     const result=collectItems(play,isGraveyard?graveyard:playerInventory,level().id,payload);if(!result)return;
     play=result.project;
     if(isGraveyard){graveyard=result.inventory;graveyardExpanded=true;}else{playerInventory=result.inventory;inventoryExpanded=true;}
+    if(!isGraveyard)notifyPlayEvents(before,playerInventory.flatMap(s=>s.items).filter(i=>!oldIds.has(i.id)).map(instance=>({type:'inventoryAdded',levelId:level().id,instanceId:instance.id,instance})));
     selected=null;render();
   }catch(error){toast(error.message);}
 }
@@ -339,6 +347,11 @@ function renderBoard() {
     const stack = l.instances.filter(n => n.x === i.x && n.y === i.y).indexOf(i);
     html += `<button class="piece ${i.locked?'scenery-locked':''} ${isSelected?'selected':''} ${tool==='link'&&linkDraft.includes(i.id)?'link-picked':''}" data-instance="${esc(i.id)}" draggable="${tool!=='link'&&!i.locked}" title="${esc(a.name)} · ${(i.rotation+(a.rotation||0))%360}°" aria-label="${esc(a.name)} at ${i.x+1}, ${i.y+1}, rotated ${(i.rotation+(a.rotation||0))%360} degrees" style="--x:${i.x};--y:${i.y};--rotation:${(i.rotation+(a.rotation||0))%360}deg;${stack ? `margin-left:${stack*5}px;margin-top:${stack*-4}px;` : ''}">${tokenArt(a,i)}${i.patrolColor?`<span class="instance-color-dot" style="background:${i.patrolColor}" title="Patrol color ${i.patrolColor}"></span>`:''}${facing===null?'':`<span class="direction" data-facing="${facing}" aria-hidden="true">▴</span>`}${children.length ? `<span class="child-count">${children.length}</span>` : ''}</button>`;
   }
+  if(play){
+    const uses=availableUses(play,l),groups=new Map();
+    for(const use of uses){const i=l.instances.find(i=>i.id===use.usedId),key=`${i.x},${i.y}`;if(!groups.has(key))groups.set(key,{i,count:0});groups.get(key).count++;}
+    for(const {i,count} of groups.values())html+=`<button class="use-object-badge" data-use-object="${esc(i.id)}" style="--x:${i.x};--y:${i.y}" aria-label="Use ${esc(asset(i.assetId).name)}${count>1?' · choose object or action':''}" title="${count>1?'Choose an object or Use action':'Use '+esc(asset(i.assetId).name)}"><span aria-hidden="true">👋</span></button>`;
+  }
   board.innerHTML = html+objectLinkArtwork(l);
   $('#zoom-label').textContent = `${Math.round(zoom*100)}%`;
 }
@@ -346,7 +359,7 @@ function overlays(a,i,l) {
   const effects = [a,...activeDescendants(currentProject(),a.id,i)].filter(a => parameterIcons.includes(a.icon));
   let result = '';
   for (const effect of effects) {
-    const overlay=parameterOverlay(currentProject(),a,effect,i,l);
+    const overlay=effect.behaviours?.some(b=>b.type==='blockNode'&&b.enabled)?parameterOverlay(currentProject(),a,effect,i,l):effectOverlay(currentProject(),a,effect,i,l);
     for(const [x,y] of overlay.cells)result += `<span class="overlay-cell" style="--x:${x};--y:${y};--overlay:${overlay.color}"></span>`;
   }
   return result;
@@ -473,6 +486,7 @@ function place(assetId,x,y) {
   dispatch({type:'instance.add',data:{levelId:level().id,instance}});
 }
 function rotate() { const i=activeInstance(); if(i) dispatch({type:'instance.update',data:{levelId:level().id,id:i.id,rotation:(i.rotation+90)%360}}); }
+function rotateFacing(){const i=activeInstance();if(i){const facing=facingDirection(asset(i.assetId),i);dispatch({type:'instance.update',data:{levelId:level().id,id:i.id,direction:facing===null?0:(facing+90)%360}});}}
 function removeSelected() {
   if(activePostIt()){dispatch({type:'postIt.delete',data:{levelId:level().id,id:selected.id}});selected=null;render();return;}
   if(selected?.type==='objectLink'){deleteObjectLink(selected.id);return;}
@@ -491,6 +505,31 @@ function moveTargetLabel(instance){
   return item?`${asset(item.assetId)?.name} · ${item.x+1}, ${item.y+1}`:'Missing object';
 }
 const turnState=()=>({project:play,inventory:playerInventory,graveyard,levelId:level().id});
+function notifyPlayEvents(before,events,actionLog=[]){
+  if(!play||eventTurnQueued||!eventsAdvanceTurn(before.project,play,events))return;
+  const session=playStart,prior=clone(before);eventTurnQueued=true;
+  queueMicrotask(()=>{
+    eventTurnQueued=false;if(!play||session!==playStart)return;
+    try{turnSequence=eventTurn(turnSequence,prior,turnState(),actionLog);restoreTurn();}
+    catch(error){toast(error.message);}
+  });
+}
+function useCanvasObject(id){
+  if(!play)return;
+  const anchor=level().instances.find(i=>i.id===id),stacked=new Set(level().instances.filter(i=>anchor&&i.x===anchor.x&&i.y===anchor.y).map(i=>i.id));
+  const choices=availableUses(play,level()).filter(use=>stacked.has(use.usedId));
+  const perform=choice=>{
+    try{
+      const before=turnState(),result=useObject(play,playerInventory,graveyard,choice);
+      play=result.project;playerInventory=result.inventory;graveyard=result.graveyard;
+      notifyPlayEvents(before,result.events,result.log);render();toast('Used object.');
+    }catch(error){toast(error.message);}
+  };
+  if(choices.length===1)return perform(choices[0]);
+  if(!choices.length)return toast('This object is no longer usable from here.');
+  showDialog(modal('Choose a Use action',`<div class="use-action-choices">${choices.map((choice,n)=>{const owner=level().instances.find(i=>i.id===choice.instanceId),used=level().instances.find(i=>i.id===choice.usedId);return `<button data-use-choice="${n}">${esc(asset(used.assetId).name)} · ${esc(used.id.slice(0,5))}<small>${esc(asset(owner.assetId).name)} / ${effectActions[choice.action]}</small></button>`;}).join('')}</div>`));
+  $('#dialog-content').querySelectorAll('[data-use-choice]').forEach(button=>button.onclick=()=>{closeDialog();perform(choices[Number(button.dataset.useChoice)]);});
+}
 function restoreTurn(){
   const frame=clone(turnSequence.frames[turnSequence.cursor]);
   play=frame.project;playerInventory=frame.inventory;graveyard=frame.graveyard;levelId=frame.levelId;
@@ -742,15 +781,15 @@ function guideDialog() {
     ['Browse your building blocks','Objects shows token hierarchies, including nested states, parameters and tags. Tokens, Parameters and Tags are focused catalogs; All shows every hierarchy and the tag catalog. Use the arrows to collapse branches.'],
     ['Give an idea a token','Use + in the library. Choose a name, sprite, rule, tags and color. AoE and LoS have their own Parameters pool and adjustable cell distances. Tags have a separate editor; search existing tags or create one inside the token editor.'],
     ['Compose a mechanic','Drag Area of effect onto Torch in the library. It becomes a nested parameter. Nested tokens can contain more tokens; drag to the standalone drop zone to detach.'],
-    ['Place and investigate','Drag a token from the library onto any cell, or click its + then a cell. Drag placed pieces to move them. Select one to inspect its tags and children. R rotates 90°. Double-click opens its definition.'],
+    ['Place and investigate','Drag a token from the library onto any cell, or click its + then a cell. Drag placed pieces to move them. Select one to inspect its tags and children. R rotates facing; Shift + R rotates the object 90°. Double-click opens its definition.'],
     ['Build a state','Select a token and use Add state. A state has its own name, description, tags, icon variant and contents. Use Nest inside in any editor to put a token or parameter into a state. Toggle states from the parent: disabled contents disappear from the hierarchy and overlays, but stay saved. Enabled states combine; the last one in the list supplies the parent icon. Playtest state changes are private.'],
     ['Change one thing','Try a new radius, a different tag, or a new description. What changes for the player? Definitions update every placement; placement notes belong to one piece.'],
     ['Play through turns','Playtest makes a private copy. Use Start turn 1, Next turn, and Previous turn in the horizontal toolbar. Previous restores positions, states, targets, patrol progress and both trays. Save / Load sequence keeps a separate JSON recording. Clear sequence restores the starting layout. Post-its and cards stay shared and saved.'],
-    ['Assign behaviours','Select a token, state or effect and choose Behaviours. Expand copies the placed hierarchy to highlighted nodes. Apply Effect switches states, sends objects to the graveyard, sets move targets, or Flushes a connected chain of matching objects. Move To follows free connected nodes toward a target or back and forth along a patrol. Inactive states suppress their behaviours.'],
-    ['Choose resolution order','Use the ⇅ tool or Resolution order in the inspector. Move behaviours up or down to decide what acts first. Earlier actions can affect later ones. New expansion copies wait until next turn. Resolution log shows the actions and affected counts.'],
+    ['Assign behaviours','Select a token, state or effect and choose Behaviours. Expand copies the placed hierarchy to highlighted nodes. Apply Effect switches states, sends objects to the graveyard, sets move targets, or Flushes a connected chain of matching objects. Move To follows free connected nodes; Teleport jumps to a cell or object. Block Node restricts movement and optionally effects. Use shows a clickable hand; Advance Turn On Event can react to user moves, uses, and backpack transfers. Inactive states suppress their behaviours.'],
+    ['Choose resolution order','Use Behaviour resolution order in the collapsible Manipulate & Organize panel, the ⇅ tool, or Resolution order in the inspector. Move behaviours up or down to decide what acts first. Earlier actions can affect later ones. New expansion copies wait until next turn. Resolution log shows the actions and affected counts.'],
     ['Leave an observation','Choose a color, then drag Post-it from the floating toolbar onto any canvas space. Drag its body to move freely; double-click to edit. Drag Arrow, Step, or Question to annotate the board. Use Visibility to hide categories, or an item’s minus button to hide it. Notes survive playtest resets.'],
     ['Draw a design prompt','Design Experiments and Design Challenges each start with 12 cards. Draw randomly without replacement; Return all cards resets only that deck for this room. Review the inventory in the deck dialog, or open Card Studio to edit the repository files on the host.']
-  ].map(([title,text],n)=>`<div class="help-item"><span class="help-number">${String(n+1).padStart(2,'0')}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}</div><div class="callout">Overlays are visual rulers: area uses Manhattan (diamond) distance, Line Effect is a straight directional line; cones widen toward their far edge and rectangles keep a constant width. Cross Effect includes the origin and extends one-cell-wide arms in all four directions. Library rotation updates the shared definition; placement rotation adds to it. Assigned behaviours use these cells at the beginning of each playtest turn. Without behaviours, play stays manual. Multiple tokens can share a cell; remove or move the top one to reach the others.</div><details><summary>Keyboard shortcuts</summary><p>V select · F floor · N nodes · W walls · E erase tiles · X erase connection · C reconnect · R rotate · Delete remove selected token · Esc deselect · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo · / search. Use arrow keys to move a selected piece; Enter on a focused cell activates it.</p></details><p style="margin-top:18px;font-size:0.769231rem">Original workshop sprites. An unofficial, educational fan project inspired by the GO games and A Plague Tale.</p>`,'<button data-close class="primary">Back to the workbench</button>','FIELD GUIDE'));
+  ].map(([title,text],n)=>`<div class="help-item"><span class="help-number">${String(n+1).padStart(2,'0')}</span><div><strong>${title}</strong><p>${text}</p></div></div>`).join('')}</div><div class="callout">Overlays are visual rulers: area uses Manhattan (diamond) distance, Line Effect is a straight directional line; cones widen toward their far edge and rectangles keep a constant width. Cross Effect includes the origin and extends one-cell-wide arms in all four directions. Library rotation updates the shared definition; placement rotation adds to it. Assigned behaviours use these cells at the beginning of each playtest turn. Without behaviours, play stays manual. Multiple tokens can share a cell; remove or move the top one to reach the others.</div><details><summary>Keyboard shortcuts</summary><p>V select · F floor · N nodes · W walls · E erase tiles · X erase connection · C reconnect · R facing · Shift+R rotate object · Delete remove selected token · Esc deselect · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo · / search. Use arrow keys to move a selected piece; Enter on a focused cell activates it.</p></details><p style="margin-top:18px;font-size:0.769231rem">Original workshop sprites. An unofficial, educational fan project inspired by the GO games and A Plague Tale.</p>`,'<button data-close class="primary">Back to the workbench</button>','FIELD GUIDE'));
 }
 async function optionsDialog() {
   showDialog(modal('Options', '<p id="options-loading" role="status">Loading options…</p>'));
@@ -950,6 +989,7 @@ function connectionNode(key) {
 document.addEventListener('click', e=>{
   if(Date.now()<suppressClickUntil){e.preventDefault();return;}
   if(notePending && e.target.id!=='instance-note') saveNote();
+  const useBadge=e.target.closest('[data-use-object]');if(useBadge){useCanvasObject(useBadge.dataset.useObject);return;}
   const patrolSwatch=e.target.closest('[data-patrol-color]');if(patrolSwatch&&!play){updatePatrol({color:patrolSwatch.dataset.patrolColor});return;}
   const objectPatrolSwatch=e.target.closest('[data-instance-patrol-color]');if(objectPatrolSwatch&&activeInstance()){dispatch({type:'instance.update',data:{levelId:level().id,id:activeInstance().id,patrolColor:objectPatrolSwatch.dataset.instancePatrolColor}});return;}
   const patrolChoice=e.target.closest('[data-patrol]');if(patrolChoice){patrolId=patrolChoice.dataset.patrol;selected=null;staged=null;if(!play)tool='patrol';render();return;}
@@ -1035,7 +1075,7 @@ document.addEventListener('click', e=>{
     case 'zoom-fit':fitBoard();break;
     case 'undo':undo();break;
     case 'redo':undo(true);break;
-    case 'rotate-facing':{const i=activeInstance();if(i){const facing=facingDirection(asset(i.assetId),i);dispatch({type:'instance.update',data:{levelId:level().id,id:i.id,direction:facing===null?0:(facing+90)%360}});}break;}
+    case 'rotate-facing':rotateFacing();break;
     case 'rotate-piece':rotate();break;
     case 'delete-selected':removeSelected();break;
     case 'place-selected':if(activeAsset())stage(activeAsset().id);break;
@@ -1079,7 +1119,7 @@ $('#import-file').onchange=async e=>{
 };
 document.addEventListener('pointerdown',e=>{
   if(['link','patrol'].includes(tool)&&e.target.closest('#board'))return;
-  if(e.button!==0||$('#dialog').open||e.target.closest('[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
+  if(e.button!==0||$('#dialog').open||e.target.closest('[data-use-object],[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
   if(tool==='postIt'&&e.target.closest('#board'))return;
   const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),note=e.target.closest('[data-post-it]');
   const inventoryItem=play&&e.target.closest('[data-inventory-item],[data-graveyard-item]');
@@ -1154,7 +1194,7 @@ function dropToken(target,payload){
   if(cell||piece){
     const target=cell?{x:Number(cell.dataset.x),y:Number(cell.dataset.y)}:level().instances.find(i=>i.id===piece.dataset.instance);
     if(['inventory','graveyard'].includes(payload.type)&&play){
-      try{const fromGraveyard=payload.type==='graveyard',result=releaseItem(play,fromGraveyard?graveyard:playerInventory,level().id,payload.id,{x:target.x,y:target.y},snapToNodes);play=result.project;if(fromGraveyard)graveyard=result.inventory;else playerInventory=result.inventory;selected={type:'instance',id:result.instanceId};render();}catch(error){toast(error.message);}return;
+      try{const before=turnState(),fromGraveyard=payload.type==='graveyard',result=releaseItem(play,fromGraveyard?graveyard:playerInventory,level().id,payload.id,{x:target.x,y:target.y},snapToNodes);play=result.project;if(fromGraveyard)graveyard=result.inventory;else playerInventory=result.inventory;selected={type:'instance',id:result.instanceId};if(!fromGraveyard)notifyPlayEvents(before,[{type:'inventoryDropped',levelId:level().id,instanceId:result.instanceId}]);render();}catch(error){toast(error.message);}return;
     }
     if(payload.type==='asset'&&!play)place(payload.id,target.x,target.y);
     if(payload.type==='instance'&&payload.levelId===level().id){selected={type:'instance',id:payload.id};dispatch({type:'instance.update',data:{levelId:level().id,id:payload.id,x:target.x,y:target.y}});}return;
@@ -1207,7 +1247,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){staged=null;selected=null;connectionStart=null;linkDraft=[];tool='select';render();return;}
   if(e.key==='/'){e.preventDefault();$('#asset-search').focus();return;}
   if(e.key.toLowerCase()==='p'){e.preventDefault();$('#post-it-tool').focus();toast('Drag Post-it onto the canvas.');return;}
-  if(e.key.toLowerCase()==='r'){e.preventDefault();rotate();return;}
+  if(e.key.toLowerCase()==='r'){e.preventDefault();if(e.shiftKey)rotate();else rotateFacing();return;}
   if(['Delete','Backspace'].includes(e.key)){e.preventDefault();removeSelected();return;}
   if(e.key==='Enter'){
     const linkPiece=e.target.closest('[data-instance]');if(tool==='link'&&linkPiece){e.preventDefault();pickLinkObject(linkPiece.dataset.instance);return;}
@@ -1223,7 +1263,7 @@ document.addEventListener('keydown',e=>{
 $('#dialog').addEventListener('click',e=>{if(e.target===$('#dialog')){const r=$('#dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)requestCloseDialog();}});
 window.addEventListener('beforeunload',e=>{if(pending.length||notePending||hasUnsavedEditors()){e.preventDefault();e.returnValue='';}});
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(fitBoard,200);});
-editingTools=manipulation({getProject:currentProject,getLevel:level,getSelected:()=>selected,setSelected:value=>{selected=value;staged=null;tool='select';},dispatch,render,toast,isPlay:()=>!!play,snap:()=>snapToNodes,esc,collectInventory:collectInInventory});
+editingTools=manipulation({getProject:currentProject,getLevel:level,getSelected:()=>selected,setSelected:value=>{selected=value;staged=null;tool='select';},dispatch,render,toast,isPlay:()=>!!play,snap:()=>snapToNodes,esc,collectInventory:collectInInventory,openBehaviourOrder:()=>behaviourTools.order()});
 floatingTools=floatingCanvas({getProject:()=>project,getLevel:level,dispatch,edit:postItDialog,uid,esc});
 render();
 

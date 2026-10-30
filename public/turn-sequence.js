@@ -1,5 +1,6 @@
 import {clone,validateProject} from './model.js';
 import {resolveTurn} from './behaviours.js';
+import {behaviourNames} from './behaviour-schema.js';
 
 export const maxTurns=200;
 export const createSequence=state=>({format:'plague-tale-go-turns',version:1,cursor:0,frames:[{...clone(state),log:[]}]});
@@ -19,6 +20,15 @@ export function nextTurn(sequence,state,makeId){
 }
 export function previousTurn(sequence,state){
   const next=captureSequence(sequence,state);if(next.cursor>0)next.cursor--;return next;
+}
+// Keep the state before the triggering user action as the previous turn, so
+// Previous also undoes the drag, use, collection or drop that advanced it.
+export function eventTurn(sequence,before,after,actionLog=[]){
+  const next=captureSequence(sequence,before);
+  if(next.cursor>=maxTurns)throw Error(`A sequence supports ${maxTurns} turns. Save it, then clear to begin another sequence.`);
+  next.frames.length=next.cursor+1;
+  const result=resolveTurn(after.project,after.inventory,after.graveyard);
+  next.frames.push({...result,log:[...actionLog,...result.log],levelId:after.levelId});next.cursor++;return next;
 }
 function validateTray(project,tray){
   if(!Array.isArray(tray)||tray.length>30000)throw Error('Invalid turn inventory.');
@@ -44,7 +54,7 @@ export function validateSequence(input){
     frame.project=validateProject(frame.project);
     if(!frame.project.levels.some(l=>l.id===frame.levelId))throw Error('Invalid turn level.');
     validateTray(frame.project,frame.inventory);validateTray(frame.project,frame.graveyard);
-    if(!Array.isArray(frame.log)||frame.log.length>500000||frame.log.some(item=>!item||typeof item.assetName!=='string'||item.assetName.length>80||!['expand','applyEffect','moveTo'].includes(item.type)||!Number.isInteger(item.count)||item.count<0||item.count>1000))throw Error('Invalid turn resolution log.');
+    if(!Array.isArray(frame.log)||frame.log.length>500000||frame.log.some(item=>!item||typeof item.assetName!=='string'||item.assetName.length>80||!Object.hasOwn(behaviourNames,item.type)||!Number.isInteger(item.count)||item.count<0||item.count>1000))throw Error('Invalid turn resolution log.');
   }
   return sequence;
 }

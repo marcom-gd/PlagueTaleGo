@@ -1,4 +1,5 @@
 import {applyAction,clone,isState,uid,hasNode} from './model.js';
+import {checkMovement} from './behaviour-areas.js';
 
 // Kept outside the shared project: a backpack belongs to one private playtest.
 export function collectItems(project, inventory, levelId, payload) {
@@ -47,6 +48,7 @@ export function releaseItem(project, inventory, levelId, id, position, snap=fals
   const item={...clone(stack.items[0]),...position};
   if(stack.count===0)item.id=uid();
   const next=applyAction(project,{type:'instance.add',data:{levelId,instance:item}});
+  checkMovement(project,next);
   const remaining=inventory.flatMap(s=>s.id!==id||s.count===0?[s]:s.count===1?[]:[{...s,count:s.count-1,items:s.items.slice(1)}]);
   return {project:next,inventory:remaining,instanceId:item.id};
 }

@@ -119,7 +119,7 @@ test('the HTTP editing API persists behaviour configuration, shared effect uses 
     const send=async action=>{const response=await fetch(url+'/actions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,actionId:crypto.randomUUID(),expectedRevision:revision})});assert.equal(response.status,200);const result=await response.json();revision=result.revision;return result.project;};
     await send({type:'project.replace',data:p});
     await send({type:'parameter.attach',data:{id:'area',parentId:'source',usageId:'shared-area'}});
-    await send({type:'behaviour.configure',data:{id:'shared-area',behaviours:[apply('flush','flush',{eligibleAssetIds:['guard']})],ids:['flush']}});
+    await send({type:'behaviour.configure',data:{id:'shared-area',behaviours:[apply('flush','flush',{eligibleAssetIds:['guard']}),{id:'block',type:'blockNode',enabled:true,blockAssetIds:['guard'],blockScope:'movement'},{id:'use',type:'useEffect',enabled:true,usableAssetIds:['guard'],useTarget:'linked',action:'graveyard'},{id:'teleport',type:'teleport',enabled:false,teleportTarget:'self',targetInstanceId:null,destination:{type:'linked',id:null}},{id:'advance',type:'advanceOnEvent',enabled:true,events:['use','moved','inventoryAdded','inventoryDropped']}],ids:['flush','block','use','teleport','advance']}});
     const saved=await send({type:'asset.update',data:{id:'guard',behaviours:[move('walk')]}});
     await send({type:'behaviour.order',data:{ids:['walk','flush']}});
     const privateRun=resolveTurn(saved);assert.equal(privateRun.graveyard.length,1);
