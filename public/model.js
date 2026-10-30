@@ -84,7 +84,8 @@ export function descendants(project, id, visited = new Set()) {
   return project.assets.filter(a => a.parentId === id).flatMap(a => [a, ...descendants(project, a.id, visited)]);
 }
 export const isState = a => a?.kind === 'state';
-export const isParameter = a => !isState(a) && ['area','sight','cone','rectangle','cross'].includes(a?.icon);
+export const parameterIcons = ['area','self','sight','cone','rectangle','cross'];
+export const isParameter = a => !isState(a) && parameterIcons.includes(a?.icon);
 // Uses keep their own hierarchy identity, while these properties belong to the definition.
 const parameterKeys=['name','icon','variant','rule','tags','color','range','width','rotation','direction','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','behaviours'];
 export const parameterDefinition = (project,a) => a?.parameterId ? project.assets.find(b=>b.id===a.parameterId) : a;
@@ -154,7 +155,7 @@ export function validateProject(p) {
     if(a.rotation!==undefined && ![0,90,180,270].includes(a.rotation))throw Error('Invalid definition rotation.');
     if(a.occludedByWalls!==undefined && typeof a.occludedByWalls!=='boolean')throw Error('Invalid wall occlusion.');
     if(a.overlapThreshold!==undefined && (!Number.isInteger(a.overlapThreshold)||a.overlapThreshold<0||a.overlapThreshold>1000))throw Error('Invalid overlap threshold.');
-    if(a.overlapAssetIds!=null && (!Array.isArray(a.overlapAssetIds)||a.overlapAssetIds.length>500||new Set(a.overlapAssetIds).size!==a.overlapAssetIds.length||a.overlapAssetIds.some(id=>!p.assets.some(b=>b.id===id&&!isState(b)&&!['area','sight','cone','rectangle','cross'].includes(b.icon)))))throw Error('Invalid overlap objects.');
+    if(a.overlapAssetIds!=null && (!Array.isArray(a.overlapAssetIds)||a.overlapAssetIds.length>500||new Set(a.overlapAssetIds).size!==a.overlapAssetIds.length||a.overlapAssetIds.some(id=>!p.assets.some(b=>b.id===id&&!isState(b)&&!parameterIcons.includes(b.icon)))))throw Error('Invalid overlap objects.');
     if(a.overlapColor!==undefined && !/^#[0-9a-f]{6}$/i.test(a.overlapColor))throw Error('Invalid overlap color.');
     if(a.width!==undefined && (!Number.isInteger(a.width)||a.width<1||a.width>12))throw Error('Invalid effect width.');
     if(a.kind!==undefined && !['token','state'].includes(a.kind))throw Error('Invalid token kind.');
@@ -168,7 +169,7 @@ export function validateProject(p) {
       const definition=parameterDefinition(p,a);
       if(!a.parentId || !isParameter(a) || !definition || definition===a || definition.parameterId || !isParameter(definition) || definition.parentId || parameterKeys.some(key=>JSON.stringify(a[key])!==JSON.stringify(definition[key])))throw Error('Invalid reusable parameter reference.');
     }
-    if(isState(a) && ['area','sight','cone','rectangle','cross'].includes(p.assets.find(b=>b.id===a.parentId)?.icon))throw Error('States must belong to a token or another state.');
+    if(isState(a) && parameterIcons.includes(p.assets.find(b=>b.id===a.parentId)?.icon))throw Error('States must belong to a token or another state.');
     const seen = new Set([a.id]); let parent = a.parentId;
     while (parent) { if (seen.has(parent)) throw Error('Tokens cannot contain themselves.'); seen.add(parent); parent = p.assets.find(b => b.id === parent)?.parentId; }
   }
@@ -308,15 +309,15 @@ export function applyAction(input, action) {
     case 'asset.update': {
       const target = p.assets.find(a => a.id === d.id); if (!target) throw Error('Token no longer exists.');
       const a=parameterDefinition(p,target);
-      if(target.parameterId && 'icon' in d && !['area','sight','cone','rectangle','cross'].includes(d.icon))throw Error('A reusable parameter needs a parameter shape.');
-      if(!target.parameterId && isParameter(a) && 'icon' in d && !['area','sight','cone','rectangle','cross'].includes(d.icon) && p.assets.some(b=>b.parameterId===a.id))throw Error('Detach all uses before changing this parameter into a token.');
+      if(target.parameterId && 'icon' in d && !parameterIcons.includes(d.icon))throw Error('A reusable parameter needs a parameter shape.');
+      if(!target.parameterId && isParameter(a) && 'icon' in d && !parameterIcons.includes(d.icon) && p.assets.some(b=>b.parameterId===a.id))throw Error('Detach all uses before changing this parameter into a token.');
       for (const key of ['name','icon','variant','kind','enabled','rule','tags','color','range','width','rotation','direction','autoFacing','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','parentId','exclusiveStates','behaviours']) if (key in d) a[key] = d[key];
       if(target.parameterId && 'parentId' in d){target.parentId=d.parentId;a.parentId=null;}
       if(d.exclusiveStates===true){const enabled=p.assets.filter(b=>isState(b)&&b.parentId===a.id&&b.enabled);for(const sibling of enabled.slice(0,-1))sibling.enabled=false;}
       if(d.enabled&&isState(a)&&p.assets.find(b=>b.id===a.parentId)?.exclusiveStates)for(const sibling of p.assets.filter(b=>isState(b)&&b.parentId===a.parentId&&b.id!==a.id))sibling.enabled=false;
       if('parentId' in d||'kind' in d)for(const l of p.levels)for(const i of l.instances)if(i.stateOverrides){const allowed=new Set(descendants(p,i.assetId).filter(isState).map(s=>s.id));i.stateOverrides=Object.fromEntries(Object.entries(i.stateOverrides).filter(([id])=>allowed.has(id)));}
       if('icon' in d && !('variant' in d))a.variant=defaultVariant(a.icon);
-      if(('icon' in d || 'kind' in d) && (isState(a)||['area','sight','cone','rectangle','cross'].includes(a.icon)))for(const b of p.assets)if(b.overlapAssetIds)b.overlapAssetIds=b.overlapAssetIds.filter(id=>id!==a.id);
+      if(('icon' in d || 'kind' in d) && (isState(a)||parameterIcons.includes(a.icon)))for(const b of p.assets)if(b.overlapAssetIds)b.overlapAssetIds=b.overlapAssetIds.filter(id=>id!==a.id);
       break;
     }
     case 'asset.delete': {
@@ -378,6 +379,7 @@ export function effectContains(effect, dx, dy, rotation=0) {
   const angle=(rotation+360)%360;
   const forward=angle===0?-dy:angle===90?dx:angle===180?dy:-dx;
   const side=angle===0?dx:angle===90?dy:angle===180?-dx:-dy;
+  if(effect.icon==='self')return dx===0 && dy===0;
   if(effect.icon==='area')return Math.abs(dx)+Math.abs(dy)<=effect.range;
   if(effect.icon==='cross')return (dx===0 || dy===0) && Math.abs(dx)+Math.abs(dy)<=effect.range;
   if(forward<1||forward>effect.range)return false;
@@ -411,12 +413,12 @@ export const facingDirection = (asset,instance) => instance.direction === undefi
 export function parameterOverlay(project,root,effect,instance,level) {
   const rotation=effectRotation(project,root,effect,instance.rotation+(effect.followTokenFacing?(facingDirection(root,instance)??0):0)), cells=[];
   for(let y=0;y<level.height;y++)for(let x=0;x<level.width;x++){
-    if(effectContains(effect,x-instance.x,y-instance.y,rotation) && (!effect.occludedByWalls || (level.tiles[`${x},${y}`]!=='wall' && !wallBlocks(level.tiles,instance.x,instance.y,x,y))))cells.push([x,y]);
+    if(effectContains(effect,x-instance.x,y-instance.y,rotation) && (effect.icon==='self' || !effect.occludedByWalls || (level.tiles[`${x},${y}`]!=='wall' && !wallBlocks(level.tiles,instance.x,instance.y,x,y))))cells.push([x,y]);
   }
   const covered=new Set(cells.map(([x,y])=>`${x},${y}`));
   const count=level.instances.filter(i=>{
     const a=project.assets.find(a=>a.id===i.assetId);
-    return i.id!==instance.id && a && (effect.overlapAssetIds==null || effect.overlapAssetIds.includes(a.id)) && !isState(a) && !['area','sight','cone','rectangle','cross'].includes(a.icon) && assetIsActive(project,a.id,i) && covered.has(`${i.x},${i.y}`);
+    return i.id!==instance.id && a && (effect.overlapAssetIds==null || effect.overlapAssetIds.includes(a.id)) && !isState(a) && !parameterIcons.includes(a.icon) && assetIsActive(project,a.id,i) && covered.has(`${i.x},${i.y}`);
   }).length;
   return {cells,count,color:effect.overlapThreshold>0 && count>=effect.overlapThreshold ? (effect.overlapColor??'#edc47c') : effect.color};
 }

@@ -11,6 +11,7 @@ const sprites = {
   door: ['..bbbbbbbb..','..bllllllb..','..blbbbbbb..','..blbbbbbb..','..blbbbbbb..','..blbbbbyb..','..blbbbbbb..','..blbbbbbb..','..blbbbbbb..','..bbbbbbbb..','............','............'],
   exit: ['............','....cccc....','....c.......','....c..c....','....cccccc..','....c..c....','....c.......','....cccc....','............','............','............','............'],
   area: ['............','....cccc....','..cc....cc..','..c......c..','.c...cc...c.','.c..cccc..c.','.c..cccc..c.','.c...cc...c.','..c......c..','..cc....cc..','....cccc....','............'],
+  self: ['............','.cccccccccc.','.c........c.','.c........c.','.c..cccc..c.','.c..cccc..c.','.c..cccc..c.','.c..cccc..c.','.c........c.','.c........c.','.cccccccccc.','............'],
   sight: ['............','.....c......','....ccc.....','...ccccc....','..ccccccc...','.ccccccccc..','.....c......','.....c......','....ccc.....','....cwc.....','....ccc.....','............'],
   cone: ['............','.....c......','....ccc.....','....ccc.....','...ccccc....','...ccccc....','..ccccccc...','..ccccccc...','.ccccccccc..','............','............','............'],
   cross: ['............','.....cc.....','.....cc.....','.....cc.....','.....cc.....','.cccccccccc.','.cccccccccc.','.....cc.....','.....cc.....','.....cc.....','.....cc.....','............'],
@@ -27,11 +28,12 @@ export const iconVariants = {
   torch:{on:'On',off:'Off'}, rock:{intact:'Intact',broken:'Broken'},
   kid:{alive:'Alive',dead:'Dead'},girl:{alive:'Alive',dead:'Dead'},guard:{alive:'Alive',dead:'Dead'},rat:{alive:'Alive',dead:'Dead'},
   chandelier:{on:'On',off:'Off'},door:{closed:'Closed',open:'Open'},exit:{active:'Active',inactive:'Inactive'},
-  area:{default:'Default'},sight:{default:'Default'},cone:{default:'Default'},rectangle:{default:'Default'},cross:{default:'Default'},lever:{off:'Off',on:'On'},wall:{intact:'Intact',broken:'Broken'},
+  area:{default:'Default'},self:{default:'Default'},sight:{default:'Default'},cone:{default:'Default'},rectangle:{default:'Default'},cross:{default:'Default'},lever:{off:'Off',on:'On'},wall:{intact:'Intact',broken:'Broken'},
   key:{available:'Available',used:'Used'},fire:{on:'On',off:'Off'},bridge:{intact:'Intact',broken:'Broken'},noise:{on:'On',off:'Off'},
   cat:{sitting:'Sitting',prowling:'Prowling'},sling:{loaded:'Loaded',empty:'Empty'},dog:{standing:'Standing',sitting:'Sitting'},crow:{perched:'Perched',flying:'Flying'},lantern:{on:'Lit',off:'Unlit'},chest:{closed:'Closed',open:'Open'},barrel:{intact:'Intact',broken:'Broken'},crate:{intact:'Intact',broken:'Broken'},rope:{coiled:'Coiled',hanging:'Hanging'},ladder:{intact:'Intact',broken:'Broken'},trap:{armed:'Armed',sprung:'Sprung'},bell:{idle:'Idle',ringing:'Ringing'},
   square:{filled:'Filled',outline:'Outline'},triangle:{filled:'Filled',outline:'Outline'},hexagon:{filled:'Filled',outline:'Outline'},circle:{filled:'Filled',outline:'Outline'},diamond:{filled:'Filled',outline:'Outline'}
 };
+iconNames.self = 'Self';
 iconNames.chickenThigh = 'Chicken thigh';
 iconNames.brazier = 'Brazier';
 iconNames.cookingPot = 'Cooking Pot';

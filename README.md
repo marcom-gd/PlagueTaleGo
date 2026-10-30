@@ -95,6 +95,8 @@ Icons use a **32 × 32 pixel grid**, with crisp outlines, shading, and highlight
 
 ### Visual parameters
 
+**Self** covers only the token's occupied cell. Use it to detect overlapping objects or apply effects to them during playtest. It supports reusable attachments, state gating, overlap object filters and overlap colors like other parameters. Its area stays one cell regardless of range, rotation, facing or wall occlusion; the range slider is hidden for Self.
+
 **Cross Effect** draws a + centered on the token, including its cell. Arm length controls how many cells each of its four one-cell-wide arms reaches. It supports wall occlusion and overlap coloring like other parameters.
 
 Use **Link objects (L)** in the canvas toolbar to connect two or more placed objects. Click each object to include or remove it, then **Create link**. Give the link a name, rule / description, and color; the editor also lets you change its members. Semi-transparent lines follow the objects as they move. The name label appears when any member is selected or **Show all parameters** is on. Click the label (or a link in a placed object's inspector) to inspect, edit, or **Delete link**. Delete/Backspace also removes a selected link. Links are saved with the level and included in exports and undo history. Removing a member keeps links with at least two remaining objects; smaller links are removed automatically. State rows show their chosen icon and variant.
@@ -162,4 +164,4 @@ The standalone-token drop target stays pinned below the library list while its r
 
 Choose **Patrol path** in the paint toolbar, create a patrol, choose its color, then click or drag over existing nodes in order. The first and last nodes show **S** and **E**; **Swap S / E** reverses the route. Select a patrol in the list to bring overlapping paths into focus. Each patrol has a visibility checkbox, and the toolbar can hide or show all patrols, including during playtest.
 
-Select an object placement to assign its **Patrol color dot**, use the selected patrol's color, or remove the dot. The color belongs to that instance. **Show all parameters** remains available in playtest. Patrol edits and dots save with the project; changes made during playtest use its temporary private copy.
+Select an object placement to assign its **Patrol color dot** using the same eight color presets as the Patrol Path tool, choose a custom color with **＋**, use the selected patrol's color, or remove the dot. The color belongs to that instance. **Show all parameters** remains available in playtest. Patrol edits and dots save with the project; changes made during playtest use its temporary private copy.

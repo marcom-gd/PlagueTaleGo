@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newProject,applyAction,validateProject,activeDescendants,parameterOverlay} from '../public/model.js';
+import {newProject,applyAction,validateProject,activeDescendants,parameterOverlay,effectContains,isParameter} from '../public/model.js';
+import {resolveTurn} from '../public/behaviours.js';
 import {copyHierarchy} from '../public/editing.js';
 import {inventoryData} from '../inventory-export.mjs';
 
@@ -8,6 +9,32 @@ const token=(id,parentId=null)=>({id,name:id,kind:'token',icon:'torch',rule:'',t
 const parameter=(id,parentId=null)=>({...token(id,parentId),icon:'area',followTokenFacing:true,occludedByWalls:true,overlapThreshold:1,overlapColor:'#edc47c'});
 function fixture(){const p=newProject();p.levels[0].width=14;p.levels[0].height=11;p.assets=[token('torch'),token('guard'),parameter('light')];return p;}
 const attach=(p,id,parentId,usageId)=>applyAction(p,{type:'parameter.attach',data:{id,parentId,usageId,originalUsageId:usageId+'-original'}});
+
+test('Self covers exactly the occupied cell regardless of range, facing, rotation or walls and counts only overlapping objects',()=>{
+  for(const range of [1,5,12])for(const rotation of [0,90,180,270])for(let y=-2;y<=2;y++)for(let x=-2;x<=2;x++)assert.equal(effectContains({icon:'self',range},x,y,rotation),x===0&&y===0);
+  let p=fixture();p=applyAction(p,{type:'asset.update',data:{id:'light',icon:'self'}});p=attach(p,'light','torch','torch-self');
+  const l=p.levels[0],owner={id:'owner',assetId:'torch',x:6,y:5,rotation:90,direction:180};
+  l.instances=[owner,{id:'overlap',assetId:'guard',x:6,y:5,rotation:0},{id:'nearby',assetId:'guard',x:7,y:5,rotation:0},{id:'marker',assetId:'light',x:6,y:5,rotation:0}];
+  l.tiles['6,5']='wall';
+  const effect=p.assets.find(a=>a.id==='torch-self');assert.equal(isParameter(effect),true);
+  let overlay=parameterOverlay(p,p.assets[0],effect,owner,l);
+  assert.deepEqual(overlay.cells,[[6,5]]);assert.equal(overlay.count,1);assert.equal(overlay.color,'#edc47c');
+  l.instances.find(i=>i.id==='overlap').x=5;overlay=parameterOverlay(p,p.assets[0],effect,owner,l);assert.equal(overlay.count,0);assert.equal(overlay.color,effect.color);
+  assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'light',overlapAssetIds:['light']}}));
+});
+
+test('Self remains a reusable parameter through export, state gating and turn behaviour resolution',()=>{
+  let p=fixture();p=applyAction(p,{type:'asset.update',data:{id:'light',icon:'self',behaviours:[{id:'collect-overlap',type:'applyEffect',enabled:true,action:'graveyard',eligibleAssetIds:['guard']}]}});
+  p.assets.push({...token('lit','torch'),kind:'state',enabled:true});p=attach(p,'light','lit','torch-self');
+  const l=p.levels[0];l.instances=[{id:'owner',assetId:'torch',x:6,y:5,rotation:0},{id:'overlap',assetId:'guard',x:6,y:5,rotation:0},{id:'nearby',assetId:'guard',x:7,y:5,rotation:0}];
+  p=validateProject(JSON.parse(JSON.stringify(p)));
+  const exported=inventoryData(p),atom=exported.atoms.find(row=>row[0]==='torch-self');
+  assert.equal(atom[1],'Parameter');assert.equal(atom[6],'self');assert.equal(atom[8],0);
+  assert.ok(exported.recipes.get('GE:torch').parameters.includes('occupied cell'));
+  const run=resolveTurn(p);assert.deepEqual(run.graveyard.flatMap(s=>s.items.map(i=>i.id)),['overlap']);
+  assert.ok(run.project.levels[0].instances.some(i=>i.id==='nearby'));
+  p=applyAction(p,{type:'instance.state',data:{levelId:l.id,id:'owner',stateId:'lit',enabled:false}});assert.equal(resolveTurn(p).graveyard.length,0);
+});
 
 test('reusable parameters attach to several tokens and edits through any use update every property and overlay',()=>{
   let p=attach(fixture(),'light','torch','torch-light');p=attach(p,'light','guard','guard-light');

@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
-import { validateProject, clone, descendants, assetIsActive, nodesConnected, isState, isFloor, nodeCells } from './public/model.js';
+import { validateProject, clone, descendants, assetIsActive, nodesConnected, isState, isFloor, nodeCells, isParameter } from './public/model.js';
 import { column, writeWorkbook } from './xlsx.mjs';
 
 export const snapshotKinds = ['edit-design', 'playtest-start', 'playtest-current'];
 const snapshotLabels = { 'edit-design': 'Saved Edit design', 'playtest-start': 'Playtest starting layout', 'playtest-current': 'Current private playtest' };
-const parameter = a => !isState(a) && ['area', 'sight', 'cone', 'rectangle', 'cross'].includes(a.icon);
+const parameter = isParameter;
 const skills = ['Memory', 'Logic', 'Prediction', 'Tactics', 'Strategy', 'Perception', 'Management', 'Concentration', 'Reflexes', 'Timing', 'Precision', 'Endurance', 'Dexterity', 'Measurement'];
 const gameplayTypes = ['Stealth', 'Puzzle', 'Traversal', 'Combat', 'Exploration', 'Survival', 'Social', 'Other'];
 const kind = a => isState(a) ? 'State' : parameter(a) ? 'Parameter' : 'Object';
@@ -19,7 +19,7 @@ export function inventoryData(input, { snapshotKind = 'edit-design', room = '', 
   if (!snapshotKinds.includes(snapshotKind)) throw Error('Choose a supported inventory snapshot.');
   if (revision !== null && (!Number.isSafeInteger(revision) || revision < 0)) throw Error('Invalid source revision.');
   const project = clone(validateProject(input));
-  const atoms = project.assets.map(a => [a.id, kind(a), a.name, a.parentId || '', isState(a) ? a.enabled ? 'On' : 'Off' : '', a.rule, a.icon, a.variant || '', parameter(a) ? a.range : '', parameter(a) ? a.width ?? '' : '', a.rotation ?? 0, a.tags.join(';'), '', 'Workshop']);
+  const atoms = project.assets.map(a => [a.id, kind(a), a.name, a.parentId || '', isState(a) ? a.enabled ? 'On' : 'Off' : '', a.rule, a.icon, a.variant || '', parameter(a) ? a.icon==='self' ? 0 : a.range : '', parameter(a) && a.icon!=='self' ? a.width ?? '' : '', a.rotation ?? 0, a.tags.join(';'), '', 'Workshop']);
   const elements = [], parts = [], placements = [], introductions = [], challenges = [], members = [];
   const roots = new Set(project.assets.filter(a => !a.parentId).map(a => a.id));
   for (const l of project.levels) for (const i of l.instances) roots.add(i.assetId);
@@ -36,7 +36,7 @@ export function inventoryData(input, { snapshotKind = 'edit-design', room = '', 
     const active = ingredients.filter((a, i) => included[i]);
     const stateDescription = ingredients.filter(isState).map(a => `${a.name} ${included[ingredients.indexOf(a)] ? 'on' : 'off'}`).join(', ');
     const tagIds = new Set(active.flatMap(a => a.tags));
-    const parameters = active.filter(parameter).map(a => `${a.name} · ${a.range} cell${a.range === 1 ? '' : 's'}${a.width ? ` × ${a.width} wide` : ''}`).join(', ');
+    const parameters = active.filter(parameter).map(a => a.icon==='self'?`${a.name} · occupied cell`:`${a.name} · ${a.range} cell${a.range === 1 ? '' : 's'}${a.width ? ` × ${a.width} wide` : ''}`).join(', ');
     const record = { id, rootId, name: root.name + (variant ? ` · ${active.filter(isState).map(a => a.name).join(' + ') || 'alternate states'}` : ''), tagIds, tags: project.tags.filter(t => tagIds.has(t.id)).map(t => t.name).join(', '), parameters, states: stateDescription, partStart: parts.length + 6 };
     recipes.set(id, record);
     elements.push([id, record.name, record.tags, parameters, stateDescription, rootId, 0, '', '', ingredients.length, 'Workshop', 'Set atom modifiers', variant ? 'Placement state configuration captured in this snapshot.' : 'Definition defaults captured in this snapshot.']);
