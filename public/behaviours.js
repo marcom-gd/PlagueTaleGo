@@ -51,7 +51,7 @@ function setState(project,instance,behaviour) {
 function move(project,level,instance,b,owner) {
   if(instance.locked)return 0;
   const occupied=new Set(level.instances.filter(i=>i.id!==instance.id&&!isParameter(project.assets.find(a=>a.id===i.assetId))&&assetIsActive(project,i.assetId,i)).map(cell));
-  for(const key of blockedNodes(project,level,instance.assetId))occupied.add(key);
+  for(const key of blockedNodes(project,level,instance.assetId,'movement',instance.id))occupied.add(key);
   let moved=0;
   const step=next=>{
     if(!next||occupied.has(next)||!nodesConnected(level,cell(instance),next))return false;
@@ -111,7 +111,7 @@ function teleport(project,level,owner,target,destination,events){
     const linked=linkedObjects(project,level,target),id=destination.id&&resolveReference(level,owner,destination.id);
     position=id?linked.find(i=>i.id===id):linked[0];
   }
-  if(!position||position.x<0||position.y<0||position.x>=level.width||position.y>=level.height||level.tiles[cell(position)]==='wall'||blockedNodes(project,level,target.assetId).has(cell(position)))return false;
+  if(!position||position.x<0||position.y<0||position.x>=level.width||position.y>=level.height||level.tiles[cell(position)]==='wall'||blockedNodes(project,level,target.assetId,'movement',target.id).has(cell(position)))return false;
   if(cell(position)===cell(target))return false;
   const dx=position.x-target.x,dy=position.y-target.y;
   if(project.assets.find(a=>a.id===target.assetId)?.autoFacing)target.direction=Math.abs(dx)>=Math.abs(dy)?(dx>0?90:270):(dy>0?180:0);
@@ -126,12 +126,20 @@ function effectTargets(project,level,owner,assigned,b){
 function applyEffectTo(project,level,owner,b,targets,graveyard,events){
   const eligible=[...targets];
   if(b.action==='flush'){
-    const types=new Set(eligible.map(i=>i.assetId)),blocked=blockedNodes(project,level,owner.assetId,'effects');
+    const types=new Set(eligible.map(i=>i.assetId)),blocked=blockedNodes(project,level,owner.assetId,'effects',owner.id);
     const candidates=level.instances.filter(i=>i.id!==owner.id&&types.has(i.assetId)&&assetIsActive(project,i.assetId,i)&&!blocked.has(cell(i)));
-    const visited=new Set(eligible.map(i=>i.id));
-    for(let n=0;n<eligible.length;n++)for(const target of candidates){
-      const source=eligible[n];
-      if(!visited.has(target.id)&&target.assetId===source.assetId&&Math.abs(target.x-source.x)+Math.abs(target.y-source.y)<=1){visited.add(target.id);eligible.push(target);}
+    const visited=new Set(eligible.map(i=>i.id)),groups=new Map(),queue=[],reached=new Set(),reach=b.flushReach??Infinity;
+    const key=(assetId,position)=>JSON.stringify([assetId,position]);
+    for(const target of candidates){const id=key(target.assetId,cell(target));if(!groups.has(id))groups.set(id,[]);groups.get(id).push(target);}
+    for(const seed of eligible){const id=key(seed.assetId,cell(seed));if(!reached.has(id)){reached.add(id);queue.push({assetId:seed.assetId,position:cell(seed),depth:1});}}
+    for(let n=0;n<queue.length;n++){
+      const source=queue[n];
+      for(const target of groups.get(key(source.assetId,source.position))||[])if(!visited.has(target.id)){visited.add(target.id);eligible.push(target);}
+      if(source.depth>=reach)continue;
+      for(const position of neighbours(source.position)){
+        const id=key(source.assetId,position);if(reached.has(id)||!groups.has(id))continue;
+        reached.add(id);queue.push({assetId:source.assetId,position,depth:source.depth+1});
+      }
     }
   }
   let count=0;

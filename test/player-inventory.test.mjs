@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newProject,clone,applyAction} from '../public/model.js';
-import {collectItems,releaseItem,adjustStack} from '../public/player-inventory.js';
+import {newProject,clone,applyAction,validateProject} from '../public/model.js';
+import {collectItems,releaseItem,adjustStack,createPlaytestState} from '../public/player-inventory.js';
+import {createSequence,validateSequence} from '../public/turn-sequence.js';
+import {eventsAdvanceTurn} from '../public/behaviours.js';
+import {copyLevel} from '../public/editing.js';
 
 function fixture(){
   let p=newProject();
@@ -13,6 +16,39 @@ function fixture(){
   p=applyAction(p,{type:'objectLink.add',data:{levelId:l.id,link:{id:'pair',name:'Pair',rule:'',color:'#edc47c',instanceIds:['one','two']}}});
   return {p,levelId:l.id};
 }
+
+test('starting inventory initializes finite and infinite stacks at turn zero without gameplay events',()=>{
+  let {p,levelId}=fixture();p.assets[0].behaviours=[{id:'advance',type:'advanceOnEvent',enabled:true,events:['inventoryAdded','inventoryDropped']}];
+  p.assets.push({...p.assets[0],id:'rock',name:'Rock',icon:'rock',behaviours:[]});
+  p=applyAction(p,{type:'level.update',data:{levelId,startingInventory:[{assetId:'torch',count:3},{assetId:'rock',count:0}]}});
+  const before=clone(p),initial=createPlaytestState(p,levelId),sequence=createSequence(initial);
+  assert.deepEqual(p,before);assert.equal(sequence.cursor,0);assert.equal(sequence.frames.length,1);assert.deepEqual(sequence.frames[0].log,[]);
+  assert.deepEqual(initial.inventory.map(s=>[s.assetId,s.count,s.items.length]),[['torch',3,3],['rock',0,1]]);
+  assert.equal(new Set(initial.inventory.flatMap(s=>s.items.map(i=>i.id))).size,4);assert.deepEqual(initial.project.levels[0].instances,p.levels[0].instances);
+  assert.deepEqual(validateSequence(JSON.parse(JSON.stringify(sequence))),sequence);assert.equal(eventsAdvanceTurn(p,initial.project,[]),false);
+  const collected=collectItems(initial.project,initial.inventory,levelId,{type:'instance',id:'one',levelId});assert.equal(eventsAdvanceTurn(initial.project,collected.project,[{type:'inventoryAdded',levelId,instanceId:'one'}]),true);
+  const dropped=releaseItem(initial.project,initial.inventory,levelId,initial.inventory[0].id,{x:4,y:3});assert.equal(eventsAdvanceTurn(initial.project,dropped.project,[{type:'inventoryDropped',levelId,instanceId:dropped.instanceId}]),true);
+});
+
+test('starting inventory is per-level, survives copying and save/load, and prunes deleted object types',()=>{
+  let {p,levelId}=fixture();p=applyAction(p,{type:'level.update',data:{levelId,startingInventory:[{assetId:'torch',count:2}]}});
+  const copied=copyLevel(p.levels[0]);p=applyAction(p,{type:'level.add',data:copied});
+  p=applyAction(p,{type:'level.update',data:{levelId:copied.id,startingInventory:[{assetId:'torch',count:5}]}});
+  assert.equal(createPlaytestState(p,levelId).inventory[0].count,2);assert.equal(createPlaytestState(p,copied.id).inventory[0].count,5);
+  assert.deepEqual(validateProject(JSON.parse(JSON.stringify(p))),p);assert.equal(copied.startingInventory[0].count,2);
+  p=applyAction(p,{type:'asset.delete',data:{id:'torch'}});assert.deepEqual(p.levels.map(l=>l.startingInventory),[[],[]]);
+  assert.deepEqual(createPlaytestState(p,levelId).inventory,[]);assert.throws(()=>createPlaytestState(p,'missing'),/existing level/);
+});
+
+test('invalid starting inventory cannot change the level and old projects keep empty starting backpacks',()=>{
+  const {p,levelId}=fixture(),before=clone(p);assert.deepEqual(createPlaytestState(p,levelId).inventory,[]);
+  const row={assetId:'torch',count:1};
+  for(const startingInventory of [null,[{...row,count:-1}],[{...row,count:1.5}],[{...row,count:1001}],[row,row],[{assetId:'lit',count:1}],[{assetId:'missing',count:1}]])assert.throws(()=>applyAction(p,{type:'level.update',data:{levelId,startingInventory}}));
+  p.assets.push({...p.assets[0],id:'self',icon:'self'});assert.throws(()=>applyAction(p,{type:'level.update',data:{levelId,startingInventory:[{assetId:'self',count:1}]}}));
+  p.assets.push({...p.assets[0],id:'rock',icon:'rock'});
+  assert.throws(()=>applyAction(p,{type:'level.update',data:{levelId,startingInventory:[{...row,count:1000},{assetId:'rock',count:1}]}}),/up to 1,000/);
+  assert.deepEqual(p.levels,before.levels);
+});
 test('collecting a canvas piece moves it privately, preserves its states and prunes dangling links',()=>{
   const {p,levelId}=fixture(),before=clone(p);
   const result=collectItems(p,[],levelId,{type:'instance',id:'one',levelId});

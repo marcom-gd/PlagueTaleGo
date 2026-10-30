@@ -1,5 +1,17 @@
-import {applyAction,clone,isState,uid,hasNode} from './model.js';
+import {applyAction,clone,isState,uid,hasNode,validateProject} from './model.js';
 import {checkMovement} from './behaviour-areas.js';
+
+// Initialization is data construction, never collection/drop actions. It must
+// not emit gameplay events or resolve a turn, even for event-driven objects.
+export function createPlaytestState(input,levelId,makeId=uid){
+  const project=clone(validateProject(input)),level=project.levels.find(l=>l.id===levelId);
+  if(!level)throw Error('Choose an existing level to start the playtest.');
+  const inventory=(level.startingInventory||[]).map(entry=>{
+    const items=Array.from({length:entry.count||1},()=>({id:makeId(),assetId:entry.assetId,x:0,y:0,rotation:0,note:''}));
+    return {id:items[0].id,assetId:entry.assetId,count:entry.count,items};
+  });
+  return {project,inventory,graveyard:[],levelId};
+}
 
 // Kept outside the shared project: a backpack belongs to one private playtest.
 export function collectItems(project, inventory, levelId, payload) {

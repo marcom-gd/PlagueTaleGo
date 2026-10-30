@@ -121,11 +121,12 @@ test('the HTTP editing API persists behaviour configuration, shared effect uses 
     await send({type:'parameter.attach',data:{id:'area',parentId:'source',usageId:'shared-area'}});
     await send({type:'behaviour.configure',data:{id:'shared-area',behaviours:[apply('flush','flush',{eligibleAssetIds:['guard']}),{id:'block',type:'blockNode',enabled:true,blockAssetIds:['guard'],blockScope:'movement'},{id:'use',type:'useEffect',enabled:true,usableAssetIds:['guard'],useTarget:'linked',action:'graveyard'},{id:'teleport',type:'teleport',enabled:false,teleportTarget:'self',targetInstanceId:null,destination:{type:'linked',id:null}},{id:'advance',type:'advanceOnEvent',enabled:true,events:['use','moved','inventoryAdded','inventoryDropped']}],ids:['flush','block','use','teleport','advance']}});
     const saved=await send({type:'asset.update',data:{id:'guard',behaviours:[move('walk')]}});
+    await send({type:'level.update',data:{levelId:p.levels[0].id,startingInventory:[{assetId:'guard',count:2}]}});
     await send({type:'behaviour.order',data:{ids:['walk','flush']}});
     const privateRun=resolveTurn(saved);assert.equal(privateRun.graveyard.length,1);
     const shared=(await (await fetch(url)).json()).project;assert.equal(shared.levels[0].instances.length,2);assert.deepEqual(shared.behaviourOrder,['walk','flush']);
     await stop();url=await start();const restored=(await (await fetch(url)).json()).project;
-    assert.deepEqual(restored,shared);assert.equal(restored.assets.find(a=>a.id==='shared-area').behaviours[0].action,'flush');
+    assert.deepEqual(restored,shared);assert.equal(restored.assets.find(a=>a.id==='shared-area').behaviours[0].action,'flush');assert.deepEqual(restored.levels[0].startingInventory,[{assetId:'guard',count:2}]);
   }finally{if(server)await stop();await rm(dataDir,{recursive:true,force:true});}
 });
 

@@ -153,3 +153,41 @@ test('Toggle skips non-exclusive or single-state groups and rejects use outside 
   p.assets[1].exclusiveStates=true;p.assets=p.assets.filter(a=>a.id!=='off');assert.equal(useObject(p,[],[],availableUses(p,l)[0]).log[0].count,0);
   for(const invalid of [{...toggle,stateToggle:'true'},{...toggle,action:'graveyard'},{...toggle,type:'applyEffect',eligibleAssetIds:null}])assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'effect',behaviours:[invalid]}}),/Toggle/);
 });
+
+test('Exclude Self exempts only the emitting placement from its own movement and effect blockers',()=>{
+  const {p,l}=fixture();p.assets[3].icon='self';
+  const block=b('block','blockNode',{blockAssetIds:null,blockScope:'movementAndEffects',excludeSelf:true});p.assets[3].behaviours=[block];
+  assert.equal(blockedNodes(p,l,'actor','movement','actor1').size,0);
+  assert.ok(blockedNodes(p,l,'actor','movement','another-actor').has('1,2'));
+  assert.ok(blockedNodes(p,l,'usable','movement','lever1').has('1,2'));
+  const effect=p.assets[3],owner=l.instances[0];assert.deepEqual(effectOverlay(p,p.assets[0],effect,owner,l).cells,[[1,2]]);
+  block.excludeSelf=false;assert.deepEqual(effectOverlay(p,p.assets[0],effect,owner,l).cells,[]);
+  block.excludeSelf=true;l.instances.push(i('actor2','actor',1));
+  assert.ok(blockedNodes(p,l,'actor','movement','actor1').has('1,2'),'another copy still blocks the owner');
+  assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'effect',behaviours:[{...block,excludeSelf:'yes'}]}}),/Exclude Self/);
+});
+
+test('Exclude Self permits movement and teleport within the owner’s own blocking area, but other objects remain blocked',()=>{
+  const {p,l}=fixture();p.assets[3].behaviours=[b('block','blockNode',{blockAssetIds:null,blockScope:'movement',excludeSelf:true})];
+  const selfMove=applyAction(p,{type:'instance.update',data:{levelId:l.id,id:'actor1',x:3}});assert.doesNotThrow(()=>checkMovement(p,selfMove));
+  const otherMove=applyAction(p,{type:'instance.update',data:{levelId:l.id,id:'lever1',x:3}});assert.throws(()=>checkMovement(p,otherMove),/Block Node/);
+  p.assets[0].behaviours=[b('teleport','teleport',{teleportTarget:'self',destination:{type:'position',x:3,y:2}})];assert.equal(resolveTurn(p).project.levels[0].instances[0].x,3);
+});
+
+test('finite Flush reach counts continuous cells from each seed, includes stacks, and stops branches at the limit',()=>{
+  const {p,l}=fixture();p.assets[3].range=1;p.assets[3].behaviours=[b('flush','applyEffect',{action:'flush',eligibleAssetIds:['usable'],flushReach:2})];
+  l.instances.push(i('next','usable',3),i('stack','usable',3),i('far','usable',4),i('branch','usable',2,3),i('branch-far','usable',2,4),i('gap','usable',7));
+  let run=resolveTurn(p);assert.deepEqual(run.graveyard.flatMap(s=>s.items.map(i=>i.id)).sort(),['branch','lever1','next','stack']);
+  p.assets[3].behaviours[0].flushReach=1;run=resolveTurn(p);assert.deepEqual(run.graveyard[0].items.map(i=>i.id),['lever1']);
+  p.assets[3].behaviours[0].flushReach=null;run=resolveTurn(p);assert.equal(run.graveyard[0].count,6);assert.ok(run.project.levels[0].instances.some(i=>i.id==='gap'));
+  delete p.assets[3].behaviours[0].flushReach;assert.deepEqual(resolveTurn(p).graveyard,run.graveyard);
+  for(const flushReach of [0,-1,1.5,769,'infinite'])assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'effect',behaviours:[{...p.assets[3].behaviours[0],flushReach}]}}),/Flush reach/);
+});
+
+test('Use Flush shares the finite reach rule and separately caught seeds retain their own reach',()=>{
+  const {p,l}=fixture();p.assets[3].behaviours=[b('flush','useEffect',{action:'flush',usableAssetIds:['usable'],useTarget:'used',flushReach:2})];
+  l.instances.push(i('next','usable',3),i('far','usable',4));
+  const run=useObject(p,[],[],availableUses(p,l).find(choice=>choice.usedId==='lever1'));assert.deepEqual(run.graveyard[0].items.map(i=>i.id).sort(),['lever1','next']);
+  p.assets[3].range=3;p.assets[3].behaviours=[b('flush','applyEffect',{action:'flush',eligibleAssetIds:['usable'],flushReach:1})];
+  assert.deepEqual(resolveTurn(p).graveyard[0].items.map(i=>i.id).sort(),['far','lever1','next']);
+});

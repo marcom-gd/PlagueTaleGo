@@ -25,6 +25,8 @@ export function validateBehaviours(asset,isEffect) {
     if(!b || !key(b.id)||ids.has(b.id)||!Object.hasOwn(behaviourNames,b.type)||typeof b.enabled!=='boolean')throw Error('Invalid behaviour.');
     ids.add(b.id);
     if(b.stateToggle!==undefined&&(typeof b.stateToggle!=='boolean'||b.stateToggle&&(b.type!=='useEffect'||b.action!=='switchState')))throw Error('State Toggle is available for Use with Switch State.');
+    if(b.excludeSelf!==undefined&&typeof b.excludeSelf!=='boolean')throw Error('Invalid Exclude Self option.');
+    if(b.flushReach!==undefined&&b.flushReach!==null&&(!Number.isInteger(b.flushReach)||b.flushReach<1||b.flushReach>768))throw Error('Flush reach must be 1–768 continuous cells or Infinite.');
     if(['expand','applyEffect','blockNode','useEffect'].includes(b.type)&&!isEffect)throw Error('Area behaviours must be assigned to an effect.');
     if(b.type==='expand'&&typeof b.allowStacking!=='boolean')throw Error('Invalid expansion stacking option.');
     if(b.type==='applyEffect'||b.type==='useEffect'){

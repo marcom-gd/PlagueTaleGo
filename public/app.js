@@ -5,7 +5,7 @@ import { deckIcon } from './cards-catalog.js';
 import { manipulation } from './manipulation.js';
 import { floatingCanvas } from './floating-canvas.js';
 import { initWorkshopProgress } from './workshop-progress.js';
-import { collectItems, releaseItem, adjustStack } from './player-inventory.js';
+import { collectItems, releaseItem, adjustStack, createPlaytestState } from './player-inventory.js';
 import { editorDraft } from './editor-draft.js';
 import { applyTextScale, textScale } from './ui-preferences.js';
 import { copyLevel } from './editing.js';
@@ -14,6 +14,7 @@ import { behaviourNames, effectActions } from './behaviour-schema.js';
 import { createSequence, captureSequence, nextTurn, previousTurn, validateSequence, eventTurn } from './turn-sequence.js';
 import { availableUses, useObject, eventsAdvanceTurn, movementEvents } from './behaviours.js';
 import { checkMovement, effectOverlay } from './behaviour-areas.js';
+import { startingInventoryEditor } from './starting-inventory-editor.js';
 import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles } from './model.js';
 const $ = s => document.querySelector(s);
 let uiTextScale = 100;
@@ -58,6 +59,7 @@ let project = newProject(), authoritative = clone(project), revision = -1, pendi
 let levelId, selected = null, staged = null, tool = 'select', search = '', zoom = 1, play = null, playStart = null, historyStack = [], redoStack = [];
 let playStartRevision = null;
 let turnSequence=null;
+let playInitialState=null;
 let eventTurnQueued=false;
 let playerInventory=[], inventoryExpanded=false, graveyard=[], graveyardExpanded=false;
 let dragPayload = null, showAll = false, paint = null, toastTimer, didInitialFit = false;
@@ -537,8 +539,8 @@ function restoreTurn(){
 }
 function clearTurns(){
   if(!play)return;
-  saveNote();play=clone(playStart);playerInventory=[];graveyard=[];
-  if(!play.levels.some(l=>l.id===levelId))levelId=play.levels[0].id;
+  saveNote();play=clone(playStart);playerInventory=clone(playInitialState?.inventory||[]);graveyard=clone(playInitialState?.graveyard||[]);
+  levelId=playInitialState?.levelId||play.levels[0].id;
   turnSequence=createSequence(turnState());restoreTurn();toast('Turn sequence cleared. Starting layout restored.');
 }
 function advanceTurn(previous=false){
@@ -559,7 +561,7 @@ $('#import-turns').onchange=async e=>{
     if(file.size>50*1024*1024)throw Error('Turn sequences must be smaller than 50 MB.');
     const sequence=validateSequence(JSON.parse(await file.text()));
     if(!play||session!==playStart)return;
-    saveNote();turnSequence=sequence;playStart=clone(sequence.frames[0].project);playStartRevision=null;restoreTurn();fitBoard();toast('Private turn sequence loaded.');
+    saveNote();turnSequence=sequence;playInitialState=clone(sequence.frames[0]);playStart=clone(sequence.frames[0].project);playStartRevision=null;restoreTurn();fitBoard();toast('Private turn sequence loaded.');
   }catch(error){toast(error.message);}
 };
 function turnLog(){
@@ -908,13 +910,14 @@ async function shareDialog() {
 }
 function levelSettings() {
   if(play)return;const l=level();
-  showDialog(modal('Set the scene.',`<form id="level-form"><div class="field"><label for="level-name">Level name</label><input id="level-name" required maxlength="80" value="${esc(l.name)}"></div><div class="field-row"><div class="field"><label for="level-width">Columns · 4–32</label><input type="number" id="level-width" min="4" max="32" value="${l.width}" required></div><div class="field"><label for="level-height">Rows · 4–24</label><input type="number" id="level-height" min="4" max="24" value="${l.height}" required></div></div><p>When making a level smaller, remove any tiles and pieces outside its new bounds first.</p><p id="level-form-error" class="danger" role="alert" hidden></p><div class="modal-footer"><button type="button" id="duplicate-level">Duplicate level</button><button type="button" class="danger" id="delete-level" ${project.levels.length===1?'disabled':''}>Delete level</button><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save level</button></div></form>`));
-  $('#level-form').onsubmit=e=>{e.preventDefault();const error=$('#level-form-error');error.hidden=true;error.textContent='';const data={levelId:l.id,name:$('#level-name').value.trim(),width:Number($('#level-width').value),height:Number($('#level-height').value)};if(!data.name)return;try{applyAction(project,{type:'level.update',data});}catch{error.textContent='Remove tiles and tokens beyond the new level size before shrinking.';error.hidden=false;error.scrollIntoView({block:'nearest'});return;}if(dispatch({type:'level.update',data})===false)return;closeDialog();fitBoard();};
-  watchEditor($('#level-form'));
+  showDialog(modal('Set the scene.',`<form id="level-form"><div class="field"><label for="level-name">Level name</label><input id="level-name" required maxlength="80" value="${esc(l.name)}"></div><div class="field-row"><div class="field"><label for="level-width">Columns · 4–32</label><input type="number" id="level-width" min="4" max="32" value="${l.width}" required></div><div class="field"><label for="level-height">Rows · 4–24</label><input type="number" id="level-height" min="4" max="24" value="${l.height}" required></div></div><p>When making a level smaller, remove any tiles and pieces outside its new bounds first.</p><section id="starting-inventory-editor" class="starting-inventory-editor"></section><p id="level-form-error" class="danger" role="alert" hidden></p><div class="modal-footer"><button type="button" id="duplicate-level">Duplicate level</button><button type="button" class="danger" id="delete-level" ${project.levels.length===1?'disabled':''}>Delete level</button><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save level</button></div></form>`));
+  const startingEditor=startingInventoryEditor({root:$('#starting-inventory-editor'),getProject:()=>project,initial:l.startingInventory||[],esc,label:assetPath});
+  $('#level-form').onsubmit=e=>{e.preventDefault();const error=$('#level-form-error');error.hidden=true;error.textContent='';const data={levelId:l.id,name:$('#level-name').value.trim(),width:Number($('#level-width').value),height:Number($('#level-height').value),startingInventory:startingEditor.read()};if(!data.name)return;try{applyAction(project,{type:'level.update',data});}catch(failure){error.textContent=failure.message;error.hidden=false;error.scrollIntoView({block:'nearest'});return;}if(dispatch({type:'level.update',data})===false)return;closeDialog();fitBoard();};
+  watchEditor($('#level-form'),startingEditor.read);
   $('#duplicate-level').onclick=()=>{
     const copy=copyLevel(l);
     // Include the current settings draft in the duplicated level.
-    const data={levelId:copy.id,name:($('#level-name').value.trim()||l.name)+' copy',width:Number($('#level-width').value),height:Number($('#level-height').value)};
+    const data={levelId:copy.id,name:($('#level-name').value.trim()||l.name)+' copy',width:Number($('#level-width').value),height:Number($('#level-height').value),startingInventory:startingEditor.read()};
     data.name=data.name.slice(0,80);
     const error=$('#level-form-error');
     try {
@@ -1087,9 +1090,9 @@ document.addEventListener('click', e=>{
     case 'add-level':{if(project.levels.length>=30)return toast('This workshop supports up to 30 levels.');const l=blankLevel(uid(),`Level ${project.levels.length+1}`);dispatch({type:'level.add',data:l});levelId=l.id;selected=null;staged=null;render();fitBoard();break;}
     case 'play-mode':{
       if(play)return;if(pending.length)return toast('Wait for changes to save before playtesting.');
-      playerInventory=[];graveyard=[];graveyardExpanded=false;inventoryExpanded=false;playStartRevision=revision;playStart=clone(project);play=clone(project);turnSequence=createSequence(turnState());staged=null;tool='select';selected=null;render();toast('Private playtest ready. Start turn 1 to run behaviours.');break;
+      playInitialState=createPlaytestState(project,level().id);playerInventory=clone(playInitialState.inventory);graveyard=[];graveyardExpanded=false;inventoryExpanded=playerInventory.length>0;playStartRevision=revision;playStart=clone(project);play=clone(playInitialState.project);levelId=playInitialState.levelId;turnSequence=createSequence(turnState());staged=null;tool='select';selected=null;render();toast('Private playtest ready. Start turn 1 to run behaviours.');break;
     }
-    case 'edit-mode':if(play){saveNote();playerInventory=[];graveyard=[];play=null;playStart=null;turnSequence=null;playStartRevision=null;selected=null;if(!project.levels.some(l=>l.id===levelId))levelId=project.levels[0].id;render();toast('Back to editing. Your original level is preserved.');}break;
+    case 'edit-mode':if(play){saveNote();playerInventory=[];graveyard=[];play=null;playStart=null;playInitialState=null;turnSequence=null;playStartRevision=null;selected=null;if(!project.levels.some(l=>l.id===levelId))levelId=project.levels[0].id;render();toast('Back to editing. Your original level is preserved.');}break;
     case 'reset-play':clearTurns();break;
   }
 });

@@ -177,6 +177,16 @@ export function validateProject(p) {
     reserve(l.id);
     validateReferenceOverrides(l.referenceOverrides);
     if (typeof l.name !== 'string' || l.name.length > 80 || !Number.isInteger(l.width) || !Number.isInteger(l.height) || l.width < 4 || l.width > 32 || l.height < 4 || l.height > 24 || !l.tiles || !Array.isArray(l.instances) || l.instances.length > 1000) throw Error('Invalid level.');
+    if(l.startingInventory!==undefined){
+      if(!Array.isArray(l.startingInventory)||l.startingInventory.length>500)throw Error('Invalid starting inventory.');
+      const inventoryTypes=new Set();let itemCount=0;
+      for(const entry of l.startingInventory){
+        const object=p.assets.find(a=>a.id===entry?.assetId);
+        if(!object||isState(object)||isParameter(object)||inventoryTypes.has(object.id)||!Number.isInteger(entry.count)||entry.count<0||entry.count>1000)throw Error('Starting inventory needs unique object types and quantities from 0 (infinite) to 1,000.');
+        inventoryTypes.add(object.id);itemCount+=entry.count||1;
+      }
+      if(itemCount>1000)throw Error('Starting inventory supports up to 1,000 items, counting an infinite stack as one.');
+    }
     if(!Array.isArray(l.postIts)||l.postIts.length>500)throw Error('Too many post-its in this level.');
     for(const note of l.postIts){
       reserve(note.id);
@@ -327,7 +337,7 @@ export function applyAction(input, action) {
       if(p.levels.some(l=>l.instances.some(i=>i.locked&&remove.has(i.assetId))))throw Error('Unlock the scenery placements before deleting this definition.');
       p.assets = p.assets.filter(a => !remove.has(a.id));
       for(const a of p.assets)if(a.overlapAssetIds)a.overlapAssetIds=a.overlapAssetIds.filter(id=>!remove.has(id));
-      p.levels.forEach(l => {l.instances = l.instances.filter(i => !remove.has(i.assetId));for(const i of l.instances)if(i.stateOverrides)i.stateOverrides=Object.fromEntries(Object.entries(i.stateOverrides).filter(([id])=>!remove.has(id)));pruneLinks(l);}); break;
+      p.levels.forEach(l => {l.instances = l.instances.filter(i => !remove.has(i.assetId));if(l.startingInventory)l.startingInventory=l.startingInventory.filter(entry=>!remove.has(entry.assetId));for(const i of l.instances)if(i.stateOverrides)i.stateOverrides=Object.fromEntries(Object.entries(i.stateOverrides).filter(([id])=>!remove.has(id)));pruneLinks(l);}); break;
     }
     case 'tile.paint': {
       if(!['node','wall','empty'].includes(d.tile)&&!isFloor(d.tile))throw Error('Invalid level tile.');
@@ -365,7 +375,7 @@ export function applyAction(input, action) {
     }
     case 'objectLink.delete': {const l=level();l.objectLinks=l.objectLinks.filter(link=>link.id!==d.id);break;}
     case 'level.add': p.levels.push(d); break;
-    case 'level.update': { const l = level(); for (const key of ['name','width','height']) if (key in d) l[key] = d[key]; break; }
+    case 'level.update': { const l = level(); for (const key of ['name','width','height','startingInventory']) if (key in d) l[key] = d[key]; break; }
     case 'level.delete': if (p.levels.length > 1) p.levels = p.levels.filter(l => l.id !== d.levelId); break;
     case 'project.replace': return validateProject(clone(d));
     default: throw Error('Unknown editor action.');
