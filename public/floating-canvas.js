@@ -1,4 +1,5 @@
 import {deckIcon} from './cards-catalog.js';
+import {projectorControls} from './projector-controls.js';
 export function floatingCanvas({getProject,getLevel,dispatch,edit,uid,esc}) {
   const canvas=document.querySelector('#canvas-wrap'),toolbar=document.querySelector('.workshop-toolbar');
   canvas.append(toolbar);
@@ -45,7 +46,6 @@ export function floatingCanvas({getProject,getLevel,dispatch,edit,uid,esc}) {
   const toolbarToggle=document.createElement('button');toolbarToggle.id='canvas-toolbar-toggle';toolbarToggle.setAttribute('aria-controls',toolbar.id);canvas.append(toolbarToggle);
   const setToolbar=collapsed=>{toolbar.classList.toggle('toolbar-hidden',collapsed);toolbarToggle.setAttribute('aria-expanded',String(!collapsed));toolbarToggle.textContent=collapsed?'☷ Show tools':'☷ Hide tools';};
   let toolsCollapsed=false;try{toolsCollapsed=localStorage.getItem('workshop-tools-collapsed')==='true';}catch{}setToolbar(toolsCollapsed);
-  toolbarToggle.onclick=()=>{const next=!toolbar.classList.contains('toolbar-hidden');setToolbar(next);try{localStorage.setItem('workshop-tools-collapsed',String(next));}catch{}};
   const sidebarToggle=document.createElement('button');sidebarToggle.id='sidebar-toggle';sidebarToggle.setAttribute('aria-controls','workshop-sidebar');
   document.querySelector('.editor-heading').append(sidebarToggle);
   const setSidebar=collapsed=>{document.body.classList.toggle('sidebar-collapsed',collapsed);document.querySelector('#workshop-sidebar').inert=collapsed;sidebarToggle.setAttribute('aria-expanded',String(!collapsed));sidebarToggle.textContent=collapsed?'◧ Show sidebar':'◨ Hide sidebar';window.dispatchEvent(new Event('resize'));};
@@ -53,12 +53,17 @@ export function floatingCanvas({getProject,getLevel,dispatch,edit,uid,esc}) {
   sidebarToggle.onclick=()=>{const next=!document.body.classList.contains('sidebar-collapsed');setSidebar(next);try{localStorage.setItem('workshop-sidebar-collapsed',String(next));}catch{}};
   extra.innerHTML='<div class="float-create-tools"><button data-create-float="arrow" title="Drag onto canvas">↗ Arrow</button><button data-create-float="step" title="Drag onto canvas">① Step</button><button data-create-float="question" title="Drag onto canvas">? Question</button></div><details><summary>Visibility</summary><div class="float-visibility">'+['note','arrow','step','question','deck','card'].map(k=>`<label><input type="checkbox" checked data-visible-kind="${k}"> ${k==='note'?'Post-its':k+'s'}</label>`).join('')+'<button id="restore-floats">Restore hidden items</button></div></details><button id="projector-view">Projector view</button>';
   toolbar.append(extra);
+  const projector=projectorControls({canvas,trigger:extra.querySelector('#projector-view'),onApply:(active,preferences)=>setToolbar(active?!preferences.tools:toolsCollapsed)});
+  toolbarToggle.onclick=()=>{
+    if(projector.isActive()){projector.setToolsVisible(!projector.toolsVisible());return;}
+    toolsCollapsed=!toolsCollapsed;setToolbar(toolsCollapsed);try{localStorage.setItem('workshop-tools-collapsed',String(toolsCollapsed));}catch{}
+  };
   toolbar.querySelectorAll('[data-deck]').forEach(b=>{b.dataset.reviewDeck=b.dataset.deck;b.dataset.createFloat='deck:'+b.dataset.deck;delete b.dataset.deck;b.title='Click to review · drag onto canvas to place or restore';b.innerHTML=deckIcon(b.dataset.reviewDeck)+'<span>Review '+b.dataset.reviewDeck+'</span><span aria-hidden="true">⠿</span>';});
   const deckHint=document.createElement('small');deckHint.className='deck-drag-hint';deckHint.textContent='Click to review · drag to place';toolbar.querySelector('.deck-tools').append(deckHint);
   document.addEventListener('click',e=>{if(performance.now()<suppressSourceClickUntil&&e.target.closest('[data-review-deck]')){e.preventDefault();e.stopImmediatePropagation();}},true);
   toolbar.querySelector('#post-it-tool').dataset.createFloat='note';
   toolbar.addEventListener('change',e=>{const k=e.target.dataset.visibleKind;if(k){e.target.checked?hidden.delete(k):hidden.add(k);render();}});
-  toolbar.addEventListener('click',e=>{if(e.target.id==='restore-floats'){for(const n of items().filter(n=>n.hidden))update(n,{hidden:false});render();}if(e.target.id==='projector-view'){document.body.classList.toggle('projector-mode');e.target.textContent=document.body.classList.contains('projector-mode')?'Exit projector':'Projector view';}});
+  toolbar.addEventListener('click',e=>{if(e.target.id==='restore-floats'){for(const n of items().filter(n=>n.hidden))update(n,{hidden:false});render();}});
   document.addEventListener('pointerdown',e=>{
     if(e.button!==0||document.querySelector('dialog[open]'))return;
     const source=e.target.closest('[data-create-float]'),element=e.target.closest('[data-float-id]');if(!source&&!element)return;

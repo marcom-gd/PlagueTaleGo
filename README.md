@@ -132,6 +132,10 @@ Use **Behaviour resolution order** in **Manipulate & Organize**, **⇅** in the 
 
 Restart the workshop server and refresh browsers after installing this feature. Existing projects need no conversion; objects without behaviours retain manual play.
 
+### Projector view
+
+Choose **Projector view** in the Tools panel, then use **Show / hide** at the top right to independently show **Graveyard**, **Player Inventory**, **Tools (Post-its, arrows, etc.)**, and the **Parameters / Patrols / Resolution Order** panel. Graveyard and inventory are available during Playtest. The small parameters toolbar and its patrol picker share one visibility option. All four panels start hidden for a clean projection; your choices are remembered in your browser. **Exit projector** and **Show / hide** stay accessible even when every optional panel is hidden. Leaving Projector view restores the normal Tools panel state.
+
 ### Shortcuts
 
 V select · F floor · N path node · W wall · E erase tiles · X erase connection · C reconnect · R rotate facing · Shift+R rotate object · Delete/Backspace remove · Esc deselect · / search · Ctrl+Z undo · Ctrl+Y or Ctrl+Shift+Z redo. R changes the facing triangle without rotating the sprite; Shift+R rotates the icon and attached effects. Both shortcuts support multi-selection. Enter activates a focused grid cell or library row. Arrow keys move a selected placed token.
