@@ -1,4 +1,5 @@
 import {descendants,assetIsActive,isParameter,hasNode,parameterOverlay,wallBlocks,nodesConnected} from './model.js';
+import {matchesSelection} from './object-selection.js';
 
 export const placementBehaviours=(project,instance)=>[project.assets.find(a=>a.id===instance.assetId),...descendants(project,instance.assetId)]
   .filter(a=>a&&assetIsActive(project,a.id,instance)).flatMap(assigned=>(assigned.behaviours||[]).filter(b=>b.enabled).map(behaviour=>({assigned,behaviour})));
@@ -10,7 +11,7 @@ export function blockedNodes(project,level,assetId,scope='movement',instanceId=n
   for(const owner of level.instances){
     const root=project.assets.find(a=>a.id===owner.assetId);
     for(const {assigned,behaviour:b} of placementBehaviours(project,owner)){
-      if(b.type!=='blockNode'||b.excludeSelf&&owner.id===instanceId||scope==='effects'&&b.blockScope!=='movementAndEffects'||b.blockAssetIds!==null&&!b.blockAssetIds.includes(assetId))continue;
+      if(b.type!=='blockNode'||b.excludeSelf&&owner.id===instanceId||scope==='effects'&&b.blockScope!=='movementAndEffects'||!matchesSelection(project,level.instances.find(i=>i.id===instanceId)||{assetId},b.blockAssetIds,b.blockMode==='tags'?b.blockTagIds:undefined))continue;
       for(const [x,y] of parameterOverlay(project,root,assigned,owner,level).cells)if(hasNode(level,`${x},${y}`))blocked.add(`${x},${y}`);
     }
   }
@@ -26,7 +27,7 @@ export function effectOverlay(project,root,effect,owner,level){
   const walls=Object.fromEntries([...blocked].map(key=>[key,'wall']));
   const cells=raw.cells.filter(([x,y])=>!blocked.has(`${x},${y}`)&&!wallBlocks(walls,owner.x,owner.y,x,y));
   const covered=new Set(cells.map(([x,y])=>`${x},${y}`));
-  const count=level.instances.filter(i=>i.id!==owner.id&&assetIsActive(project,i.assetId,i)&&!isParameter(project.assets.find(a=>a.id===i.assetId))&&(effect.overlapAssetIds==null||effect.overlapAssetIds.includes(i.assetId))&&covered.has(`${i.x},${i.y}`)).length;
+  const count=level.instances.filter(i=>i.id!==owner.id&&assetIsActive(project,i.assetId,i)&&!isParameter(project.assets.find(a=>a.id===i.assetId))&&matchesSelection(project,i,effect.overlapAssetIds,effect.overlapTagIds)&&covered.has(`${i.x},${i.y}`)).length;
   return {cells,count,color:effect.overlapThreshold>0&&count>=effect.overlapThreshold?(effect.overlapColor??'#edc47c'):effect.color};
 }
 export function checkMovement(before,after){

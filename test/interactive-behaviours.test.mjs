@@ -146,12 +146,13 @@ test('Use Toggle starts with the chosen state when none is enabled, cycles large
   }
 });
 
-test('Toggle skips non-exclusive or single-state groups and rejects use outside Use Switch State',()=>{
+test('Toggle skips non-exclusive or single-state groups and rejects actions other than Switch State',()=>{
   const {p,l}=fixture();p.assets.push(a('on','lever',{kind:'state',parentId:'usable',enabled:true}),a('off','lever',{kind:'state',parentId:'usable',enabled:false}));
   const toggle=b('toggle','useEffect',{usableAssetIds:['usable'],useTarget:'used',action:'switchState',stateKey:'on',stateEnabled:true,stateToggle:true});p.assets[3].behaviours=[toggle];
   assert.equal(useObject(p,[],[],availableUses(p,l)[0]).log[0].count,0);assert.equal(p.levels[0].instances[1].stateOverrides,undefined);
   p.assets[1].exclusiveStates=true;p.assets=p.assets.filter(a=>a.id!=='off');assert.equal(useObject(p,[],[],availableUses(p,l)[0]).log[0].count,0);
-  for(const invalid of [{...toggle,stateToggle:'true'},{...toggle,action:'graveyard'},{...toggle,type:'applyEffect',eligibleAssetIds:null}])assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'effect',behaviours:[invalid]}}),/Toggle/);
+  for(const invalid of [{...toggle,stateToggle:'true'},{...toggle,action:'graveyard'}])assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'effect',behaviours:[invalid]}}),/Toggle/);
+  assert.doesNotThrow(()=>applyAction(p,{type:'asset.update',data:{id:'effect',behaviours:[{...toggle,type:'applyEffect',eligibleAssetIds:null}]}}));
 });
 
 test('Exclude Self exempts only the emitting placement from its own movement and effect blockers',()=>{

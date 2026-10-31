@@ -11,6 +11,9 @@ import { applyTextScale, textScale } from './ui-preferences.js';
 import { copyLevel } from './editing.js';
 import { behaviourEditor } from './behaviour-editor.js';
 import { behaviourNames, effectActions } from './behaviour-schema.js';
+import {behaviourChip,behaviourHierarchy} from './behaviour-ui.js';
+import {workshopPanels} from './workshop-panels.js';
+import {behaviourDragging,behaviourDropTarget,clearBehaviourDrop} from './behaviour-drag.js';
 import { createSequence, captureSequence, nextTurn, previousTurn, validateSequence, eventTurn } from './turn-sequence.js';
 import { availableUses, useObject, eventsAdvanceTurn, movementEvents } from './behaviours.js';
 import { checkMovement, effectOverlay } from './behaviour-areas.js';
@@ -37,6 +40,7 @@ function expandLibrary(expanded) {
 }
 function showDefinitionOnly(enabled) {
   if(enabled)expandLibrary(false);
+  if(enabled)collapseDefinition(false);
   $('#workshop-sidebar').classList.toggle('definition-only',enabled);
   const button=$('#definition-only');
   button.setAttribute('aria-pressed',String(enabled));
@@ -44,6 +48,17 @@ function showDefinitionOnly(enabled) {
   button.title=enabled?'Restore library and definition layout':'Show only definition';
   try{localStorage.setItem('workshop-definition-only',String(enabled));}catch{}
 }
+function collapseDefinition(collapsed){
+  if(collapsed&&$('#workshop-sidebar').classList.contains('definition-only'))showDefinitionOnly(false);
+  $('#workshop-sidebar').classList.toggle('definition-collapsed',collapsed);
+  $('#definition-toggle').setAttribute('aria-expanded',String(!collapsed));
+  $('#definition-toggle').setAttribute('aria-label',collapsed?'Expand definition':'Collapse definition');
+  $('#definition-toggle').lastElementChild.textContent=collapsed?'▸':'▾';
+  $('#definition-contents').hidden=collapsed;
+  try{localStorage.setItem('workshop-definition-collapsed',String(collapsed));}catch{}
+}
+let definitionCollapsed=false;try{definitionCollapsed=localStorage.getItem('workshop-definition-collapsed')==='true';}catch{}
+collapseDefinition(definitionCollapsed);
 let libraryExpanded=false;try{libraryExpanded=localStorage.getItem('workshop-library-expanded')==='true';}catch{}
 expandLibrary(libraryExpanded);
 let definitionOnly=false;try{definitionOnly=localStorage.getItem('workshop-definition-only')==='true';}catch{}
@@ -56,7 +71,7 @@ if(room!==room.toLowerCase()){room=room.toLowerCase();history.replaceState(null,
 const endpoint = `/api/rooms/${room}`;
 const workshopProgress = initWorkshopProgress({ endpoint, toast });
 let project = newProject(), authoritative = clone(project), revision = -1, pending = [], busy = false, connected = false, serverNeedsRestart = false;
-let levelId, selected = null, staged = null, tool = 'select', search = '', zoom = 1, play = null, playStart = null, historyStack = [], redoStack = [];
+let levelId, selected = null, staged = null, tool = 'select', zoom = 1, play = null, playStart = null, historyStack = [], redoStack = [];
 let playStartRevision = null;
 let turnSequence=null;
 let playInitialState=null;
@@ -65,6 +80,11 @@ let playerInventory=[], inventoryExpanded=false, graveyard=[], graveyardExpanded
 let dragPayload = null, showAll = false, paint = null, toastTimer, didInitialFit = false;
 let notePending = null, noteTimer;
 let connectionStart = null, libraryTab='objects';
+const librarySearch={objects:'',atomic:''};
+const panels=workshopPanels({onChange:tab=>{libraryTab=tab;renderLibrary();}});
+behaviourDragging({isPlay:()=>!!play,dispatch,onDragEnd:()=>{suppressClickUntil=Date.now()+200;}});
+const atomicKinds={parameters:'Parameters',behaviours:'Behaviours',tags:'Tags',tokens:'Tokens'};
+const atomicFilters=new Set(Object.keys(atomicKinds)),collapsedCatalogs=new Set();
 let floorTile = 'floor';
 let patrolId=null, showPatrols=true;
 const activePatrol=()=>level().patrols?.find(p=>p.id===patrolId);
@@ -221,7 +241,7 @@ function render() {
   $('#snap-to-nodes').setAttribute('aria-pressed',String(snapToNodes));
   $('#snap-to-nodes').classList.toggle('active',snapToNodes);
   $('#dimensions').textContent = `${l.width} × ${l.height} GRID`;
-  $('#asset-count').textContent = (play || project).assets.filter(a=>!a.parameterId).length + (play || project).tags.length;
+  $('#asset-count').textContent = (play || project).assets.filter(a=>!a.parameterId).length + (play || project).tags.length + ((play || project).behaviourLibrary?.length||0);
   $('#token-count').textContent = `${l.instances.length} token${l.instances.length === 1 ? '' : 's'} placed`;
   $('#level-tabs').innerHTML = (play || project).levels.map((l,i) => `<button data-level="${esc(l.id)}" class="${l.id === levelId ? 'active' : ''}"><span>${String(i+1).padStart(2,'0')}</span>${esc(l.name)}</button>`).join('');
   $('#edit-mode').classList.toggle('active',!play); $('#play-mode').classList.toggle('active',!!play);
@@ -367,14 +387,24 @@ function overlays(a,i,l) {
   return result;
 }
 function renderLibrary() {
-  const p=currentProject(), library=$('#library'), tree=['objects','all'].includes(libraryTab);
-  $('#library-root-drop').hidden=!!play;
-  const matching=a=>!search || [a.name,a.rule,...assetTags(a).flatMap(t=>[t.name,t.rule])].join(' ').toLowerCase().includes(search);
-  $('#library-tabs').innerHTML=['objects','tokens','parameters','tags','all'].map(id=>`<button role="tab" id="library-tab-${id}" aria-controls="library" aria-selected="${id===libraryTab}" data-library-tab="${id}">${id[0].toUpperCase()+id.slice(1)}</button>`).join('');
-  library.setAttribute('aria-labelledby',`library-tab-${libraryTab}`);
-  $('#create-token').setAttribute('aria-label',libraryTab==='tags'?'Create tag':libraryTab==='parameters'?'Create parameter':'Create token');
+  panels.refresh();
+  libraryTab=panels.activeTab();
+  for(const view of ['objects','atomic'])renderLibraryView(view);
+  $('#create-token').setAttribute('aria-label',libraryTab==='objects'?'Create token':'Create atomic parameter');
+}
+function renderLibraryView(view) {
+  const p=currentProject(), tree=view==='objects', suffix=tree?'':'-atomic', library=$('#library'+suffix), search=librarySearch[view];
+  if(tree)$('#library-root-drop').hidden=!!play;
+  const matching=a=>!search || [a.name,a.rule,...assetTags(a).flatMap(t=>[t.name,t.rule]),...(a.behaviours||[]).flatMap(b=>[behaviourNames[b.type],p.behaviourLibrary?.find(d=>d.id===b.definitionId)?.name])].join(' ').toLowerCase().includes(search);
+  $('#library-filters'+suffix).hidden=tree;
+  $('#library-filters'+suffix).innerHTML=tree?'':Object.entries(atomicKinds).map(([id,label])=>`<button class="library-filter-card" data-atomic-filter="${id}" aria-pressed="${atomicFilters.has(id)}">${label}</button>`).join('');
+  const branches=p.assets.filter(a=>p.assets.some(b=>b.parentId===a.id)||a.tags.length||a.behaviours?.length);
+  const expanded=tree?branches.some(a=>!collapsedAssets.has(a.id)):[...atomicFilters].some(id=>!collapsedCatalogs.has(id));
+  $('#library-collapse-all'+suffix).textContent=expanded?'Collapse all':'Expand all';
+  $('#library-collapse-all'+suffix).dataset.expand=String(!expanded);
+  library.setAttribute('aria-labelledby',`library-tab-${view}`);
   const row=(a,depth=0)=>{
-    const state=isState(a), visual=appearance(p,a), branch=p.assets.some(b=>b.parentId===a.id)||a.tags.length;
+    const state=isState(a), visual=appearance(p,a), branch=p.assets.some(b=>b.parentId===a.id)||a.tags.length||a.behaviours?.length;
     return `<div class="asset-row ${depth?'child':''} ${state?'state-row':''} ${state&&!a.enabled?'state-disabled':''} ${selected?.type==='asset'&&selected.id===a.id?'active':''}" data-asset="${esc(a.id)}" draggable="${!play||!isState(a)}" style="--depth:${depth};margin-left:${Math.min(depth,8)*14}px" tabindex="0" role="button" aria-label="${esc(a.name)}, ${state?'state':isParameter(a)?'parameter':'token'}">${tree&&branch?`<button class="tree-disclosure" data-collapse-asset="${esc(a.id)}" aria-label="${collapsedAssets.has(a.id)?'Expand':'Collapse'} ${esc(a.name)}" aria-expanded="${!collapsedAssets.has(a.id)}">${collapsedAssets.has(a.id)?'▸':'▾'}</button>`:'<span class="tree-spacer"></span>'}<div class="asset-icon" style="transform:rotate(${a.rotation||0}deg)">${tokenArt(a)}</div><div class="asset-copy"><strong>${esc(a.name)}</strong><small>${state?'STATE · '+(a.enabled?'enabled':'disabled'):isParameter(a)?iconNames[a.icon]+(a.icon==='self'?' · occupied cell':' · '+a.range+' cells'):iconVariants[visual.icon][visual.variant||defaultVariant(visual.icon)]}</small></div>${state?stateSwitch(a):`<button class="asset-place" data-rotate-asset="${esc(a.id)}" title="Rotate shared definition 90° · updates all placements" aria-label="Rotate ${esc(a.name)} 90 degrees" ${play?'disabled':''}>↻</button><button class="asset-place" data-place="${esc(a.id)}" aria-label="Place ${esc(a.name)}" ${play?'disabled':''}>＋</button>`}</div>`;
   };
   const show=(a,depth=0)=>{
@@ -383,23 +413,30 @@ function renderLibrary() {
     if(collapsedAssets.has(a.id)&&!search || (isState(a)&&!a.enabled))return html;
     if(tree) {
       html+=assetTags(a).filter(t=>!search||matching(a)||[t.name,t.rule].join(' ').toLowerCase().includes(search)).map(t=>`<div class="tree-tag" style="margin-left:${(Math.min(depth,8)+1)*14+26}px">${tagChip(t)}</div>`).join('');
+      html+=(a.behaviours||[]).map(b=>`<div class="tree-tag tree-behaviour" style="margin-left:${(Math.min(depth,8)+1)*14+26}px">${behaviourChip(p,b,{assetId:a.id,play:!!play})}</div>`).join('');
       html+=p.assets.filter(b=>b.parentId===a.id).map(b=>show(b,depth+1)).join('');
     }
     return html;
   };
-  let roots;
-  if(libraryTab==='objects')roots=p.assets.filter(a=>!a.parentId&&!isState(a)&&!isParameter(a));
-  else if(libraryTab==='all')roots=p.assets.filter(a=>!a.parentId);
-  else roots=p.assets.filter(a=>!isState(a)&&(libraryTab==='parameters'?!a.parameterId:assetIsActive(p,a.id))&&isParameter(a)===(libraryTab==='parameters'));
-  let html=libraryTab==='tags'?'':roots.map(a=>show(a)).join('');
-  if(['tags','all'].includes(libraryTab))html+=`<div class="catalog-tags">${p.tags.filter(t=>!search||[t.name,t.rule].join(' ').toLowerCase().includes(search)).map(t=>`<button class="tag" data-edit-tag="${esc(t.id)}" draggable="${!play}" data-tag="${esc(t.id)}" style="--tag-color:${t.color}" title="${esc(t.rule||'Edit tag')}">${esc(t.name)}</button>`).join('')}</div>`;
-  library.innerHTML=(staged?`<div class="staged-hint">Click the level to place ${esc(asset(staged)?.name)}. Esc to finish.</div>`:'') + (html && html!=='<div class="catalog-tags"></div>'?html:`<p class="pool-empty">${search?'No matches in this tab.':libraryTab==='objects'?'Create a token to build an object hierarchy.':`No ${libraryTab} yet. Use + to create one.`}</p>`) + (!p.assets.length&&!p.tags.length&&!play?'<button class="text-btn" id="load-example">Explore an example ↗</button>':'');
+  let html=tree?p.assets.filter(a=>!a.parentId&&!isState(a)&&!isParameter(a)).map(a=>show(a)).join(''):Object.entries(atomicKinds).filter(([id])=>atomicFilters.has(id)).map(([id,label])=>{
+    const entries=id==='tags'?p.tags.filter(t=>!search||[t.name,t.rule].join(' ').toLowerCase().includes(search)):id==='behaviours'?(p.behaviourLibrary||[]).filter(b=>!search||[b.name,b.rule,behaviourNames[b.behaviour.type]].join(' ').toLowerCase().includes(search)):p.assets.filter(a=>!isState(a)&&(id==='parameters'?isParameter(a)&&!a.parameterId:!isParameter(a))&&matching(a));
+    const content=id==='tags'?`<div class="catalog-tags">${entries.map(t=>`<button class="tag" data-edit-tag="${esc(t.id)}" draggable="${!play}" data-tag="${esc(t.id)}" style="--tag-color:${t.color}" title="${esc(t.rule||'Edit tag')}">${esc(t.name)}</button>`).join('')}</div>`:id==='behaviours'?`<div class="catalog-behaviours">${entries.map(b=>`<div class="behaviour-catalog-item">${behaviourChip(p,b.behaviour,{definition:b,catalog:true,play:!!play})}<button class="behaviour-attach" data-attach-behaviour="${esc(b.id)}" aria-label="Attach ${esc(b.name)} to selected item" title="Attach to selected item" ${play||!activeAsset()?'disabled':''}>＋</button></div>`).join('')}</div>`:entries.map(a=>row(a)).join('');
+    return `<section class="atomic-catalog"><div class="atomic-catalog-heading"><button data-collapse-catalog="${id}" aria-expanded="${!collapsedCatalogs.has(id)}">${collapsedCatalogs.has(id)?'▸':'▾'} ${label} <span>${entries.length}</span></button><button data-create-atomic="${id}" aria-label="Create ${label.toLowerCase()}" ${play?'disabled':''}>＋</button></div>${collapsedCatalogs.has(id)&&!search?'':content||'<p class="pool-empty">'+(search?'No matches.':'Use + to create a building block.')+'</p>'}</section>`;
+  }).join('');
+  library.innerHTML=(staged?`<div class="staged-hint">Click the level to place ${esc(asset(staged)?.name)}. Esc to finish.</div>`:'') + (html||`<p class="pool-empty">${search?'No matches in this tab.':tree?'Create a token to build an object hierarchy.':'Choose filter cards above to show building blocks.'}</p>`) + (!p.assets.length&&!p.tags.length&&!play?`<button class="text-btn" id="load-example${suffix}">Explore an example ↗</button>`:'');
 }
 function compositionTree(a,depth=0,i=null) {
   return currentProject().assets.filter(b=>b.parentId===a.id).map(c=>{
     if(!isState(c)&&!assetIsActive(currentProject(),c.id,i))return '';
     return `<div class="composition-branch" style="--depth:${depth}"><div class="nested-chip">${tokenArt(c)}<button class="inspect-child" data-inspect-child="${esc(c.id)}">${esc(c.name)}</button>${isState(c)?stateSwitch(c,i):''}</div>${isState(c)&&!stateEnabled(currentProject(),c,i)?'':`<div class="nested-contents"><div class="tags">${assetTags(c).map(tagChip).join('')}</div>${compositionTree(c,depth+1,i)}</div>`}</div>`;
   }).join('');
+}
+function inspectorBehaviourTree(node,root=true){
+  const ranks=new Map((currentProject().behaviourOrder||[]).map((id,n)=>[id,n]));
+  const chips=[...(node.asset.behaviours||[])].sort((a,b)=>(ranks.get(a.id)??Infinity)-(ranks.get(b.id)??Infinity)).map(b=>behaviourChip(currentProject(),b,{assetId:node.asset.id,play:!!play,hierarchy:true})).join('');
+  const content=`<div class="behaviour-chips ${play?'':'behaviour-drop-zone'}" ${play?'':`data-behaviour-owner="${esc(node.asset.id)}"`} aria-label="Behaviours for ${esc(node.asset.name)}">${chips}</div>${node.children.map(c=>inspectorBehaviourTree(c,false)).join('')}`;
+  if(root)return content||'<p class="behaviour-empty">No behaviours in this item or its state branches.</p>';
+  return `<details class="behaviour-hierarchy-branch ${node.active?'':'behaviour-branch-inactive'}" open><summary>${tokenArt(node.asset)}<span>${esc(node.asset.name)}</span>${isState(node.asset)?`<small>State · ${node.active?'on':'off'}</small>`:!node.active?'<small>inactive</small>':''}</summary><div class="behaviour-hierarchy-contents">${content}</div></details>`;
 }
 function renderInspector() {
   const a=activeAsset(), i=activeInstance(), el=$('#inspector');
@@ -415,13 +452,15 @@ function renderInspector() {
   const p=currentProject(), active=assetIsActive(p,a.id,i), children=activeDescendants(p,a.id,i), states=p.assets.filter(b=>b.parentId===a.id&&isState(b));
   const tags=[...new Set((active?[a,...children]:[]).flatMap(b=>b.tags))].map(tag).filter(Boolean);
   el.innerHTML=`<div class="eyebrow">${i?'PLACED TOKEN':isState(a)?'STATE DEFINITION':'TOKEN DEFINITION'}</div><div class="inspector-top"><div class="asset-icon">${tokenArt(a,i)}</div><div><h3>${esc(a.name)}</h3><small>${i?`CELL ${i.x+1}, ${i.y+1} · ${(i.rotation+(a.rotation||0))%360}° ICON ROTATION${facingDirection(a,i)===null?'':` · FACING ${['UP','RIGHT','DOWN','LEFT'][facingDirection(a,i)/90]}`}`:a.parentId?esc(assetPath(a)):'REUSABLE BUILDING BLOCK'}</small></div></div><p>${esc(a.rule||'No rule yet. What should this token mean?').replace(/\n/g,'<br>')}</p>${isState(a)?stateSwitch(a):''}${!active?'<p class="state-inactive-note">This branch is disabled. Its contents are hidden from the active object.</p>':''}<div class="tags">${tags.map(tagChip).join('')}</div>${isParameter(a)&&a.icon!=='self'?`<div class="field"><label for="quick-range">${a.icon==='area'?'Radius':a.icon==='cross'?'Arm length':'Length'} <span id="quick-range-value">${a.range}</span> cells</label><input id="quick-range" type="range" min="1" max="12" value="${a.range}" ${play?'disabled':''}></div>`:''}${['cone','rectangle'].includes(a.icon)?`<div class="field"><label for="quick-width">Width in cells${a.icon==='cone'?' · far edge':''}</label><input id="quick-width" type="number" min="1" max="${a.icon==='cone'?11:12}" step="${a.icon==='cone'?2:1}" value="${a.icon==='cone'?2*Math.floor(((a.width??3)-1)/2)+1:(a.width??3)}" ${play?'disabled':''}></div>`:''}${states.length?`<div class="nested-title">STATES · ${i?'THIS PIECE ONLY':'DEFINITION DEFAULTS'}</div><label class="check-row"><input type="checkbox" data-exclusive-states="${esc(a.id)}" ${a.exclusiveStates?'checked':''} ${play?'disabled':''}> Mutually exclusive states (shared definition)</label>${i?'<button id="reset-piece-states">Use definition defaults</button>':''}`:''}${states.length>1?`<p class="state-help">${a.exclusiveStates?'Only one sibling state can be enabled.':'States combine; the last enabled state supplies the icon.'} ${i?'Switches here affect only this placement.':''}</p>`:''}${active&&p.assets.some(b=>b.parentId===a.id)?compositionTree(a,0,i):''}${!isParameter(a)?`<div class="inspector-actions"><button data-create-kind="state" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Add state</button><button data-create-kind="token" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Add token</button><button data-create-kind="parameter" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Parameter</button></div>`:''}${i?`<div class="field"><label for="instance-note">Placement notes</label><textarea id="instance-note" data-instance-note="${esc(i.id)}" maxlength="4000">${esc(i.note||'')}</textarea></div>`:''}<div class="inspector-actions">${i?'<button id="rotate-piece">↻ Rotate icon 90°</button><button id="rotate-facing">▴ Rotate facing</button><button id="duplicate-piece">⧉ Duplicate</button>':!isState(a)?`<button id="place-selected" ${play?'disabled':''}>＋ Place in level</button>`:''}<button id="edit-definition" ${play?'disabled':''}>Edit ${isState(a)?'state':'token'}</button></div><div class="inspector-actions"><button class="danger" id="delete-selected" ${play&&!i?'disabled':''}>${i?'Remove from level':isState(a)?'Delete state':'Delete token'}</button>${!i&&a.parentId&&!isState(a)?'<button id="detach-token">↳ Detach</button>':''}</div>`;
+  const parent=!i&&a.parentId?asset(a.parentId):null;
+  if(parent)el.insertAdjacentHTML('afterbegin',`<button type="button" class="definition-back" data-inspect-child="${esc(parent.id)}" title="Back to parent definition: ${esc(parent.name)}" aria-label="Back to parent definition: ${esc(parent.name)}"><span aria-hidden="true">←</span><span>Back to ${esc(parent.name)}</span></button>`);
   if(isParameter(a)) {
     $('#edit-definition').textContent='Edit parameter';
     if(!i){el.querySelector('.eyebrow').textContent=a.parameterId?'SHARED PARAMETER USE':'PARAMETER DEFINITION';$('#delete-selected').textContent=a.parameterId?'Detach parameter':'Delete parameter';}
   }
-  const assigned=[a,...descendants(p,a.id)].filter(b=>!isState(b)||assetIsActive(p,b.id,i));
-  const behaviourCount=assigned.reduce((n,b)=>n+(b.behaviours?.length||0),0);
-  el.insertAdjacentHTML('beforeend',`<div class="nested-title">BEHAVIOURS · ${behaviourCount}</div><div class="inspector-actions"><button id="edit-behaviours" ${play?'disabled':''}>Behaviours · ${a.behaviours?.length||0} assigned</button><button id="inspector-behaviour-order">Resolution order</button></div>${i?`<p class="move-target-summary">Move target: ${esc(moveTargetLabel(i))}</p><button id="set-move-target">Set move target</button>`:''}`);
+  const hierarchy=behaviourHierarchy(p,a.id,i,{includeEmpty:!play});
+  const count=node=>(node.asset.behaviours?.length||0)+node.children.reduce((n,c)=>n+count(c),0);
+  el.insertAdjacentHTML('beforeend',`<div class="nested-title">BEHAVIOURS · ${count(hierarchy)}</div><div class="inspector-behaviours">${inspectorBehaviourTree(hierarchy)}</div><div class="inspector-actions"><button id="edit-behaviours" ${play?'disabled':''}>Behaviours · ${a.behaviours?.length||0} assigned</button><button id="inspector-behaviour-order">Resolution order</button></div>${i?`<p class="move-target-summary">Move target: ${esc(moveTargetLabel(i))}</p><button id="set-move-target">Set move target</button>`:''}`);
   if(i) {
     el.insertAdjacentHTML('beforeend',`<div class="field"><label for="instance-patrol-color">Patrol color dot</label>${patrolColorChoices(i.patrolColor||activePatrol()?.color||'#e89750',true,!!i.patrolColor)}<div class="inspector-actions"><button id="use-patrol-color" ${activePatrol()?'':'disabled'}>Use selected patrol color</button><button id="clear-patrol-color" ${i.patrolColor?'':'disabled'}>Remove dot</button></div><small>Choose a color to identify this placement's patrol.</small></div>`);
     const links=(level().objectLinks||[]).filter(link=>link.instanceIds.includes(i.id));
@@ -502,6 +541,7 @@ function stage(id) { if(play)return;if(isState(asset(id)))return toast('Place th
 function moveTargetLabel(instance){
   const target=instance.moveTarget;
   if(!target||target.type==='self')return 'Self';
+  if(target.type==='tags')return 'Tags: '+(target.tagIds.map(id=>currentProject().tags.find(t=>t.id===id)?.name||id).join(', ')||'none');
   if(target.type==='position')return `Column ${target.x+1}, row ${target.y+1}`;
   const item=level().instances.find(i=>i.id===target.id);
   return item?`${asset(item.assetId)?.name} · ${item.x+1}, ${item.y+1}`:'Missing object';
@@ -529,7 +569,7 @@ function useCanvasObject(id){
   };
   if(choices.length===1)return perform(choices[0]);
   if(!choices.length)return toast('This object is no longer usable from here.');
-  showDialog(modal('Choose a Use action',`<div class="use-action-choices">${choices.map((choice,n)=>{const owner=level().instances.find(i=>i.id===choice.instanceId),used=level().instances.find(i=>i.id===choice.usedId);return `<button data-use-choice="${n}">${esc(asset(used.assetId).name)} · ${esc(used.id.slice(0,5))}<small>${esc(asset(owner.assetId).name)} / ${effectActions[choice.action]}</small></button>`;}).join('')}</div>`));
+  showDialog(modal('Choose a Use action',`<div class="use-action-choices">${choices.map((choice,n)=>{const owner=level().instances.find(i=>i.id===choice.instanceId),used=level().instances.find(i=>i.id===choice.usedId);return `<button data-use-choice="${n}">${esc(asset(used.assetId).name)} · ${esc(used.id.slice(0,5))}<small>${esc(asset(owner.assetId).name)} / ${effectActions[choice.action]||behaviourNames[choice.triggerType]}</small></button>`;}).join('')}</div>`));
   $('#dialog-content').querySelectorAll('[data-use-choice]').forEach(button=>button.onclick=()=>{closeDialog();perform(choices[Number(button.dataset.useChoice)]);});
 }
 function restoreTurn(){
@@ -566,7 +606,7 @@ $('#import-turns').onchange=async e=>{
 };
 function turnLog(){
   const frame=turnSequence?.frames[turnSequence.cursor];if(!frame)return;
-  showDialog(modal(`Turn ${turnSequence.cursor} · Resolution log`,`<p>${frame.log.length} behaviours resolved. Counts show objects affected, copies created, or nodes moved.</p><ol class="turn-resolution-log">${frame.log.slice(0,500).map(row=>`<li><strong>${esc(row.assetName)}</strong> · ${behaviourNames[row.type]}${row.action?` / ${effectActions[row.action]}`:''}<span>${row.count}</span></li>`).join('')||'<li>No active behaviours this turn.</li>'}</ol>${frame.log.length>500?'<p>Showing the first 500 entries. The saved sequence contains the complete log.</p>':''}`));
+  showDialog(modal(`Turn ${turnSequence.cursor} · Resolution log`,`<p>${frame.log.length} behaviours resolved. Counts show objects affected, copies created, or nodes moved.</p><ol class="turn-resolution-log">${frame.log.slice(0,500).map(row=>`<li><strong>${esc(row.assetName)}</strong> · ${behaviourNames[row.type]}${row.triggerType?` / ${behaviourNames[row.triggerType]}`:''}${row.action?` / ${effectActions[row.action]}`:''}<span>${row.count}</span></li>`).join('')||'<li>No active behaviours this turn.</li>'}</ol>${frame.log.length>500?'<p>Showing the first 500 entries. The saved sequence contains the complete log.</p>':''}`));
 }
 let dialogEditor=null;
 function showDialog(content) { dialogEditor=null;$('#dialog').dataset.deckView='';$('#dialog-content').innerHTML=content; if(!$('#dialog').open)$('#dialog').showModal(); }
@@ -602,6 +642,16 @@ const hasUnsavedEditors=()=>!!dialogEditor?.dirty()||dialogParents.some(parent=>
 $('#dialog').addEventListener('cancel',e=>{e.preventDefault();requestCloseDialog();});
 function modal(title,body,footer='',eyebrow='THE WORKBENCH') { return `<div class="modal"><div class="eyebrow">${eyebrow}</div><div class="modal-head"><h2>${esc(title)}</h2><button data-close aria-label="Close dialog">×</button></div>${body}${footer?`<div class="modal-footer">${footer}</div>`:''}</div>`; }
 const behaviourTools=behaviourEditor({getProject:currentProject,getLevel:level,isPlay:()=>!!play,dispatch,showDialog,modal,closeDialog,watchEditor,esc,toast});
+function createAtomic(kind){
+  if(play)return;
+  if(kind==='behaviours')behaviourTools.block();
+  else if(kind==='tags')tagDialog();
+  else tokenDialog(undefined,kind==='parameters'?'parameter':'token');
+}
+function attachBehaviour(definitionId,a=activeAsset()){
+  if(play||!a)return;
+  if(dispatch({type:'behaviour.attach',data:{id:a.id,definitionId,usageId:uid()}})!==false)toast('Shared behaviour attached. Edit its block to update every use.');
+}
 function confirmDialog(title,text,label,action) {
   const fromEditor=!!dialogEditor;
   if(fromEditor)suspendDialog();
@@ -658,7 +708,7 @@ function tokenDialog(existing, kind='token', parentId=null, onSaved=null, initia
   draft.variant ||= kind==='state'?(parent?.variant||defaultVariant(draft.icon)):defaultVariant(draft.icon);
   const editorLabel=()=>isState(draft)?'state':isParameter(draft)?'parameter':'token';
   const forbidden=new Set([draft.id,...descendants(project,draft.id).map(a=>a.id)]);
-  showDialog(modal(`${existing?'Edit':'Create'} a ${editorLabel()}`,`<form id="token-form"><div class="field"><label for="token-name">Name <span class="muted">· required</span></label><input id="token-name" maxlength="80" required placeholder="A torch, a rule, a possibility…" value="${esc(draft.name)}" autofocus></div>${(isState(draft)?[false]:[false,true]).map(parameter=>`<div class="field-label">${parameter?'Parameters · visual behavior':'Token icons'}</div><div class="icon-picker ${parameter?'parameter-picker':''}">${Object.entries(iconNames).filter(([id])=>parameterIcons.includes(id)===parameter).map(([id,name])=>`<button type="button" data-icon="${id}" class="${draft.icon===id?'active':''}" title="${name}" aria-label="${name}" aria-pressed="${draft.icon===id}">${sprite(id,draft.color)}${parameter?`<span>${name}</span>`:''}</button>`).join('')}</div>`).join('')}<div class="field-label">Icon variant</div><div id="variant-picker" class="variant-picker"></div><div class="field"><label for="token-parent">Nest inside</label><select id="token-parent" ${isState(draft)?'required':''}>${!isState(draft)?'<option value="">Standalone</option>':''}${project.assets.filter(a=>!forbidden.has(a.id)&&(!isState(draft)||!isParameter(a))).map(a=>`<option value="${esc(a.id)}" ${draft.parentId===a.id?'selected':''}>${esc(assetPath(a))}${isState(a)?' (state)':''}</option>`).join('')}</select></div>${isState(draft)?`<label class="check-row"><input id="state-enabled" type="checkbox" ${draft.enabled?'checked':''}> Enabled · show this state’s contents</label>`:''}<div class="field"><label for="token-rule">Rule / description</label><textarea id="token-rule" maxlength="4000" placeholder="What does it do? What can change? The rules are yours to define.">${esc(draft.rule)}</textarea></div><div class="field tag-field"><label for="token-tags">Tags <span class="muted">· reusable definitions</span></label><div id="token-tag-list" class="tags"></div><input id="token-tags" maxlength="60" placeholder="Search tags or create a new one…" autocomplete="off"><div id="tag-options" class="tag-options"></div><div id="inline-tag-editor" hidden></div></div><div class="field"><label>Parameter color</label><div class="color-picker">${['#b8cf96','#edc47c','#d8967f','#8fb8c2','#b2a1c6','#ddddbd'].map(c=>`<button type="button" data-color="${c}" class="${draft.color===c?'active':''}" style="--swatch:${c}" aria-label="Color ${c}"></button>`).join('')}<input id="custom-color" type="color" value="${draft.color}" aria-label="Custom parameter color"></div></div><p id="self-help" ${draft.icon==='self'?'':'hidden'}>Self affects only the token’s occupied cell. Use it to detect stacked objects or apply behaviours to overlaps. Range, direction and wall occlusion do not change its area.</p><div class="field" id="range-field" ${isParameter(draft)&&draft.icon!=='self'?'':'hidden'}><label id="range-name" for="token-range">${draft.icon==='area'?'Radius':draft.icon==='cross'?'Arm length':'Length'} in grid cells</label><div class="range-control"><input type="range" id="token-range" min="1" max="12" value="${draft.range}"><output id="range-value">${draft.range} cells</output></div><small id="range-help">Effect area for overlays and assigned behaviours. Areas use diamond-shaped grid distance; crosses include the origin and extend equally along all four grid axes. Line, cone and rectangle extend forward, excluding the origin. Cones stay centered and use odd widths; saved even cone widths round down. Even rectangle widths include one extra cell on the right. Enable Occluded by Walls to stop the effect at wall tiles.</small></div><div id="parameter-behavior" ${isParameter(draft)?'':'hidden'}><label class="check-row"><input id="token-follow-facing" type="checkbox" ${draft.followTokenFacing?'checked':''}> Follow Token Facing</label><small>Turn this parameter with the parent token’s facing triangle. Its own rotation remains a relative offset.</small><label class="check-row"><input id="token-occlusion" type="checkbox" ${draft.occludedByWalls?'checked':''}> Occluded by Walls</label><small>Wall tiles and cells behind them are hidden. Walls also block diagonal corners.</small><label class="check-row"><input id="token-overlap-enabled" type="checkbox" ${draft.overlapThreshold>0?'checked':''}> Change color when objects overlap</label><div id="overlap-options" ${draft.overlapThreshold>0?'':'hidden'}><div class="field"><label for="token-overlap-mode">Objects that trigger the color</label><select id="token-overlap-mode"><option value="any" ${draft.overlapAssetIds==null?'selected':''}>Any object</option><option value="selected" ${draft.overlapAssetIds!=null?'selected':''}>Selected objects</option></select></div><fieldset id="overlap-objects" ${draft.overlapAssetIds==null?'hidden':''}><legend>Choose library objects</legend>${project.assets.filter(a=>!isState(a)&&!isParameter(a)).map(a=>`<label class="check-row"><input type="checkbox" name="overlap-object" value="${esc(a.id)}" ${draft.overlapAssetIds?.includes(a.id)?'checked':''}> ${esc(assetPath(a))}</label>`).join('')||'<small>Create an object in the library first.</small>'}</fieldset><div class="field-row"><div class="field"><label for="token-overlap-count">At least X objects</label><input id="token-overlap-count" type="number" min="1" max="1000" value="${draft.overlapThreshold||1}"></div><div class="field"><label for="token-overlap-color">Overlap color</label><input id="token-overlap-color" type="color" value="${draft.overlapColor||'#edc47c'}"></div></div><small>Counts placements of the chosen library objects inside the visible effect, including stacked objects. Select none to disable matching. Excludes the owner and other parameter markers. The whole effect changes color.</small></div></div><div class="field" id="width-field" ${['cone','rectangle'].includes(draft.icon)?'':'hidden'}><label for="token-width">Width in cells (cone: far edge)</label><input id="token-width" type="number" min="1" max="${draft.icon==='cone'?11:12}" step="${draft.icon==='cone'?2:1}" value="${draft.icon==='cone'?2*Math.floor(((draft.width??3)-1)/2)+1:(draft.width??3)}"></div><div id="token-auto-facing-field" ${!isParameter(draft)&&!isState(draft)?'':'hidden'}><label class="check-row"><input id="token-auto-facing" type="checkbox" ${draft.autoFacing?'checked':''}> Auto-facing</label><small>Face the direction moved, including in playtest. Diagonal moves use the longer axis; equal diagonals face horizontally.</small></div><div class="field"><label for="token-direction">Direction (optional)</label><select id="token-direction">${[['','None'],[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.direction??'')===v?'selected':''}>${n}</option>`).join('')}</select><small>Facing is shown by an edge triangle. Rotating facing leaves the icon upright.</small></div><div class="field"><label for="token-rotation">Icon / parameter rotation · relative to parent / placement</label><select id="token-rotation">${[[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.rotation||0)===v?'selected':''}>${n}</option>`).join('')}</select><small>Shared definition: changes affect all placements. Placed pieces can also rotate independently.</small></div><div class="callout">A token holds an idea. Nest other tokens inside it to combine their parameters. Rules are descriptions for students to interpret.</div><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit" class="primary">${existing?'Save changes':`Create ${editorLabel()}`}</button></div></form>`));
+  showDialog(modal(`${existing?'Edit':'Create'} a ${editorLabel()}`,`<form id="token-form"><div class="field"><label for="token-name">Name <span class="muted">· required</span></label><input id="token-name" maxlength="80" required placeholder="A torch, a rule, a possibility…" value="${esc(draft.name)}" autofocus></div>${(isState(draft)?[false]:[false,true]).map(parameter=>`<div class="field-label">${parameter?'Parameters · visual behavior':'Token icons'}</div><div class="icon-picker ${parameter?'parameter-picker':''}">${Object.entries(iconNames).filter(([id])=>parameterIcons.includes(id)===parameter).map(([id,name])=>`<button type="button" data-icon="${id}" class="${draft.icon===id?'active':''}" title="${name}" aria-label="${name}" aria-pressed="${draft.icon===id}">${sprite(id,draft.color)}${parameter?`<span>${name}</span>`:''}</button>`).join('')}</div>`).join('')}<div class="field-label">Icon variant</div><div id="variant-picker" class="variant-picker"></div><div class="field"><label for="token-parent">Nest inside</label><select id="token-parent" ${isState(draft)?'required':''}>${!isState(draft)?'<option value="">Standalone</option>':''}${project.assets.filter(a=>!forbidden.has(a.id)&&(!isState(draft)||!isParameter(a))).map(a=>`<option value="${esc(a.id)}" ${draft.parentId===a.id?'selected':''}>${esc(assetPath(a))}${isState(a)?' (state)':''}</option>`).join('')}</select></div>${isState(draft)?`<label class="check-row"><input id="state-enabled" type="checkbox" ${draft.enabled?'checked':''}> Enabled · show this state’s contents</label>`:''}<div class="field"><label for="token-rule">Rule / description</label><textarea id="token-rule" maxlength="4000" placeholder="What does it do? What can change? The rules are yours to define.">${esc(draft.rule)}</textarea></div><div class="field tag-field"><label for="token-tags">Tags <span class="muted">· reusable definitions</span></label><div id="token-tag-list" class="tags"></div><input id="token-tags" maxlength="60" placeholder="Search tags or create a new one…" autocomplete="off"><div id="tag-options" class="tag-options"></div><div id="inline-tag-editor" hidden></div></div><div class="field"><label>Parameter color</label><div class="color-picker">${['#b8cf96','#edc47c','#d8967f','#8fb8c2','#b2a1c6','#ddddbd'].map(c=>`<button type="button" data-color="${c}" class="${draft.color===c?'active':''}" style="--swatch:${c}" aria-label="Color ${c}"></button>`).join('')}<input id="custom-color" type="color" value="${draft.color}" aria-label="Custom parameter color"></div></div><p id="self-help" ${draft.icon==='self'?'':'hidden'}>Self affects only the token’s occupied cell. Use it to detect stacked objects or apply behaviours to overlaps. Range, direction and wall occlusion do not change its area.</p><div class="field" id="range-field" ${isParameter(draft)&&draft.icon!=='self'?'':'hidden'}><label id="range-name" for="token-range">${draft.icon==='area'?'Radius':draft.icon==='cross'?'Arm length':'Length'} in grid cells</label><div class="range-control"><input type="range" id="token-range" min="1" max="12" value="${draft.range}"><output id="range-value">${draft.range} cells</output></div><small id="range-help">Effect area for overlays and assigned behaviours. Areas use diamond-shaped grid distance; crosses include the origin and extend equally along all four grid axes. Line, cone and rectangle extend forward, excluding the origin. Cones stay centered and use odd widths; saved even cone widths round down. Even rectangle widths include one extra cell on the right. Enable Occluded by Walls to stop the effect at wall tiles.</small></div><div id="parameter-behavior" ${isParameter(draft)?'':'hidden'}><label class="check-row"><input id="token-follow-facing" type="checkbox" ${draft.followTokenFacing?'checked':''}> Follow Token Facing</label><small>Turn this parameter with the parent token’s facing triangle. Its own rotation remains a relative offset.</small><label class="check-row"><input id="token-occlusion" type="checkbox" ${draft.occludedByWalls?'checked':''}> Occluded by Walls</label><small>Wall tiles and cells behind them are hidden. Walls also block diagonal corners.</small><label class="check-row"><input id="token-overlap-enabled" type="checkbox" ${draft.overlapThreshold>0?'checked':''}> Change color when objects overlap</label><div id="overlap-options" ${draft.overlapThreshold>0?'':'hidden'}><div class="field"><label for="token-overlap-mode">Objects that trigger the color</label><select id="token-overlap-mode"><option value="any" ${draft.overlapAssetIds==null&&draft.overlapTagIds==null?'selected':''}>Any object</option><option value="selected" ${draft.overlapAssetIds!=null&&draft.overlapTagIds==null?'selected':''}>Selected objects</option><option value="tags" ${draft.overlapTagIds!=null?'selected':''}>Objects with tags</option></select></div><fieldset id="overlap-objects" ${draft.overlapAssetIds==null?'hidden':''}><legend>Choose library objects</legend>${project.assets.filter(a=>!isState(a)&&!isParameter(a)).map(a=>`<label class="check-row"><input type="checkbox" name="overlap-object" value="${esc(a.id)}" ${draft.overlapAssetIds?.includes(a.id)?'checked':''}> ${esc(assetPath(a))}</label>`).join('')||'<small>Create an object in the library first.</small>'}</fieldset><fieldset id="overlap-tags" ${draft.overlapTagIds==null?'hidden':''}><legend>Match any selected tag</legend>${project.tags.map(t=>`<label class="check-row"><input type="checkbox" name="overlap-tag" value="${esc(t.id)}" ${draft.overlapTagIds?.includes(t.id)?'checked':''}> ${esc(t.name)}</label>`).join('')}</fieldset><div class="field-row"><div class="field"><label for="token-overlap-count">At least X objects</label><input id="token-overlap-count" type="number" min="1" max="1000" value="${draft.overlapThreshold||1}"></div><div class="field"><label for="token-overlap-color">Overlap color</label><input id="token-overlap-color" type="color" value="${draft.overlapColor||'#edc47c'}"></div></div><small>Counts placements of the chosen library objects inside the visible effect, including stacked objects. Select none to disable matching. Excludes the owner and other parameter markers. The whole effect changes color.</small></div></div><div class="field" id="width-field" ${['cone','rectangle'].includes(draft.icon)?'':'hidden'}><label for="token-width">Width in cells (cone: far edge)</label><input id="token-width" type="number" min="1" max="${draft.icon==='cone'?11:12}" step="${draft.icon==='cone'?2:1}" value="${draft.icon==='cone'?2*Math.floor(((draft.width??3)-1)/2)+1:(draft.width??3)}"></div><div id="token-auto-facing-field" ${!isParameter(draft)&&!isState(draft)?'':'hidden'}><label class="check-row"><input id="token-auto-facing" type="checkbox" ${draft.autoFacing?'checked':''}> Auto-facing</label><small>Face the direction moved, including in playtest. Diagonal moves use the longer axis; equal diagonals face horizontally.</small></div><div class="field"><label for="token-direction">Direction (optional)</label><select id="token-direction">${[['','None'],[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.direction??'')===v?'selected':''}>${n}</option>`).join('')}</select><small>Facing is shown by an edge triangle. Rotating facing leaves the icon upright.</small></div><div class="field"><label for="token-rotation">Icon / parameter rotation · relative to parent / placement</label><select id="token-rotation">${[[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.rotation||0)===v?'selected':''}>${n}</option>`).join('')}</select><small>Shared definition: changes affect all placements. Placed pieces can also rotate independently.</small></div><div class="callout">A token holds an idea. Nest other tokens inside it to combine their parameters. Rules are descriptions for students to interpret.</div><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit" class="primary">${existing?'Save changes':`Create ${editorLabel()}`}</button></div></form>`));
   let parameterIds=project.assets.filter(a=>a.parentId===draft.id&&isParameter(a)).map(a=>a.id);
   const pendingParameters=new Map(), removedParameters=new Set();
   const parameterField=document.createElement('div');parameterField.className='field reusable-parameters';
@@ -692,7 +742,7 @@ function tokenDialog(existing, kind='token', parentId=null, onSaved=null, initia
   $('#token-parameters').oninput=renderParameterChoices;
   $('#token-parameters').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('#parameter-options button')?.click();}};
   renderParameterChoices();
-  $('#token-overlap-mode').onchange=e=>{$('#overlap-objects').hidden=e.target.value!=='selected';};
+  $('#token-overlap-mode').onchange=e=>{$('#overlap-objects').hidden=e.target.value!=='selected';$('#overlap-tags').hidden=e.target.value!=='tags';};
   $('#token-overlap-enabled').onchange=e=>{$('#overlap-options').hidden=!e.target.checked;$('#token-overlap-count').disabled=!e.target.checked;};
   $('#token-overlap-count').disabled=!$('#token-overlap-enabled').checked;
   const renderVariants=()=>{
@@ -741,7 +791,7 @@ function tokenDialog(existing, kind='token', parentId=null, onSaved=null, initia
     if(!inlineTag.hidden){inlineTag.querySelector('[data-tag-save]').click();if(!inlineTag.hidden)return;}
     draft.name=$('#token-name').value.trim();if(!draft.name)return $('#token-name').focus();
     draft.parentId=$('#token-parent').value||null;if(isState(draft))draft.enabled=$('#state-enabled').checked;
-    draft.rule=$('#token-rule').value;draft.tags=draft.tags.filter(id=>tag(id));draft.range=Number($('#token-range').value);draft.width=Number($('#token-width').value);draft.rotation=Number($('#token-rotation').value);draft.direction=$('#token-direction').value===''?null:Number($('#token-direction').value);draft.autoFacing=$('#token-auto-facing').checked;draft.followTokenFacing=$('#token-follow-facing').checked;draft.occludedByWalls=$('#token-occlusion').checked;draft.overlapThreshold=$('#token-overlap-enabled').checked?Number($('#token-overlap-count').value):0;draft.overlapColor=$('#token-overlap-color').value;draft.overlapAssetIds=$('#token-overlap-mode').value==='selected'?[...document.querySelectorAll('input[name=overlap-object]:checked')].map(input=>input.value):null;
+    draft.rule=$('#token-rule').value;draft.tags=draft.tags.filter(id=>tag(id));draft.range=Number($('#token-range').value);draft.width=Number($('#token-width').value);draft.rotation=Number($('#token-rotation').value);draft.direction=$('#token-direction').value===''?null:Number($('#token-direction').value);draft.autoFacing=$('#token-auto-facing').checked;draft.followTokenFacing=$('#token-follow-facing').checked;draft.occludedByWalls=$('#token-occlusion').checked;draft.overlapThreshold=$('#token-overlap-enabled').checked?Number($('#token-overlap-count').value):0;draft.overlapColor=$('#token-overlap-color').value;if($('#token-overlap-mode').value==='tags')draft.overlapTagIds=[...document.querySelectorAll('input[name=overlap-tag]:checked')].map(input=>input.value);else draft.overlapTagIds=null;draft.overlapAssetIds=$('#token-overlap-mode').value==='selected'?[...document.querySelectorAll('input[name=overlap-object]:checked')].map(input=>input.value):null;
     const action={type:'asset.compose',data:{asset:draft,usageId:uid(),originalUsageId:uid(),removals:[...removedParameters],attachments:[...pendingParameters.keys()].map(id=>({id,usageId:uid(),originalUsageId:uid()}))}};
     try { applyAction(project,action); }catch(error){return toast(error.message);}
     if(dispatch(action)===false)return;
@@ -787,7 +837,7 @@ function guideDialog() {
     ['Build a state','Select a token and use Add state. A state has its own name, description, tags, icon variant and contents. Use Nest inside in any editor to put a token or parameter into a state. Toggle states from the parent: disabled contents disappear from the hierarchy and overlays, but stay saved. Enabled states combine; the last one in the list supplies the parent icon. Playtest state changes are private.'],
     ['Change one thing','Try a new radius, a different tag, or a new description. What changes for the player? Definitions update every placement; placement notes belong to one piece.'],
     ['Play through turns','Playtest makes a private copy. Use Start turn 1, Next turn, and Previous turn in the horizontal toolbar. Previous restores positions, states, targets, patrol progress and both trays. Save / Load sequence keeps a separate JSON recording. Clear sequence restores the starting layout. Post-its and cards stay shared and saved.'],
-    ['Assign behaviours','Select a token, state or parameter and choose Behaviours. Move To, Teleport and Advance Turn On Event work on all three. Expand, Apply Effect, Block Node and Use and Apply Effect belong to parameters. Inactive states suppress their behaviours. The Behaviour Guide explains every option with examples, including Set Move Target and Linked Objects.',true],
+    ['Assign behaviours','Select a token, state or parameter and choose Behaviours. Move To, Move Away From, Teleport and Advance Turn On Event work on all three. Expand, Apply Effect, Block Node and Use belong to parameters. Create reusable behaviour blocks in Atomic Parameters, or save an existing behaviour as a block. Drag a block onto an item; edits to that block update every use. Inactive states suppress their behaviours.',true],
     ['Choose resolution order','Use Behaviour resolution order in the collapsible Manipulate & Organize panel, the ⇅ tool, or Resolution order in the inspector. Move behaviours up or down to decide what acts first. Earlier actions can affect later ones. New expansion copies wait until next turn. Resolution log shows the actions and affected counts.'],
     ['Leave an observation','Choose a color, then drag Post-it from the floating toolbar onto any canvas space. Drag its body to move freely; double-click to edit. Drag Arrow, Step, or Question to annotate the board. Use Visibility to hide categories, or an item’s minus button to hide it. Notes survive playtest resets.'],
     ['Draw a design prompt','Design Experiments and Design Challenges each start with 12 cards. Draw randomly without replacement; Return all cards resets only that deck for this room. Review the inventory in the deck dialog, or open Card Studio to edit the repository files on the host.']
@@ -902,10 +952,15 @@ function inventoryDialog() {
 }
 async function shareDialog() {
   let config={urls:[]};try{config=await(await fetch('/api/config')).json();}catch{}
+  if(config.localOnly){
+    showDialog(modal('A workbench of your own.','<p>This session is open only on this computer. To invite others, open your session controls and choose <b>Online session</b>. Your current workshop can stay open.</p><p><a href="/welcome" target="_blank" rel="noopener">Open session controls ↗</a></p>','<button class="primary" data-close>Done</button>','LOCAL SESSION'));
+    return;
+  }
+  const isOnline=config.transport==='poll'||config.hostControls;
   const isLoopback=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
   const links=(isLoopback?config.urls:[location.origin]).map(url=>`${url}/?room=${room}`);
   if(!links.length)links.push(location.href);
-  showDialog(modal('A shared workbench.',`<p>Open this room on another Windows browser to edit together. Everyone sees the same tokens and levels as changes are saved.</p><label class="field-label">${isLoopback && !polling?'Classroom / local network link':'Workshop link'}</label>${links.map((url,n)=>`<div class="copy-row"><input readonly id="share-link-${n}" value="${esc(url)}" aria-label="Workshop share link"><button class="primary" data-copy="${n}">Copy</button></div>`).join('')}<div class="callout">Keep this server running. ${polling?'Keep the online launcher open and your PC awake. Share the session username and password separately. Everyone with those credentials can edit every room on this server. Updates arrive about every 1.5 seconds.':'Students need to be on the same local network; Windows may ask you to allow Node.js through the firewall on a private network. Anyone with network access and the room link can edit.'}</div><p style="margin-top:15px;font-size:0.846154rem">Room ID: <b>${esc(room)}</b> · <b>${esc($('#peer-count').textContent)}</b> participant(s). New rooms start at <span class="small-link">/?room=your-room-name</span>. Playtest changes stay in your browser.</p>`,'<button class="primary" data-close>Done</button>','LIVE WORKSHOP'));
+  showDialog(modal('A shared workbench.',`<p>Open this room in another browser to edit together. Everyone sees the same tokens and levels as changes are saved.</p><label class="field-label">${isLoopback && !isOnline?'Classroom / local network link':'Workshop link'}</label>${links.map((url,n)=>`<div class="copy-row"><input readonly id="share-link-${n}" value="${esc(url)}" aria-label="Workshop share link"><button class="primary" data-copy="${n}">Copy</button></div>`).join('')}<div class="callout">Keep this server running. ${isOnline?'Keep the launcher open and your PC awake. Share the session username and password privately. Everyone with those credentials can edit every room on this server. Online updates arrive about every 1.5 seconds.':'Students need to be on the same local network; Windows may ask you to allow Node.js through the firewall on a private network. Anyone with network access and the room link can edit.'}</div>${config.hostControls?'<p><a href="/welcome" target="_blank" rel="noopener">Open session controls & copy invitation ↗</a></p>':''}<p style="margin-top:15px;font-size:0.846154rem">Room ID: <b>${esc(room)}</b> · <b>${esc($('#peer-count').textContent)}</b> participant(s). New rooms start at <span class="small-link">/?room=your-room-name</span>. Playtest changes stay in your browser.</p>`,'<button class="primary" data-close>Done</button>','LIVE WORKSHOP'));
   document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{const input=$(`#share-link-${b.dataset.copy}`);try{await navigator.clipboard.writeText(input.value);b.textContent='Copied';}catch{input.focus();input.select();toast('Link selected. Press Ctrl+C to copy.');}});
 }
 function levelSettings() {
@@ -1015,10 +1070,29 @@ document.addEventListener('click', e=>{
   }
   if(tool==='postIt'&&e.target.closest('#board')){const pos=cursorCell() || (e.target.closest('.cell')?{x:Number(e.target.closest('.cell').dataset.x),y:Number(e.target.closest('.cell').dataset.y)}:null);if(pos)postItDialog(null,pos);return;}
   const editTag=e.target.closest('[data-edit-tag]');if(editTag){if(tag(editTag.dataset.editTag))tagDialog(tag(editTag.dataset.editTag));return;}
-  const libraryView=e.target.closest('[data-library-tab]');if(libraryView){libraryTab=libraryView.dataset.libraryTab;renderLibrary();return;}
+  const libraryView=e.target.closest('[data-library-tab]');if(libraryView){panels.select(libraryView.dataset.libraryTab);return;}
+  const filter=e.target.closest('[data-atomic-filter]');if(filter){const id=filter.dataset.atomicFilter;atomicFilters.has(id)?atomicFilters.delete(id):atomicFilters.add(id);renderLibrary();$(`[data-atomic-filter="${id}"]`).focus();return;}
+  const collapseAll=e.target.closest('#library-collapse-all,#library-collapse-all-atomic');
+  if(collapseAll){
+    const expand=collapseAll.dataset.expand==='true';
+    if(collapseAll.closest('[data-workshop-panel]').dataset.workshopPanel==='objects'){collapsedAssets.clear();if(!expand)currentProject().assets.forEach(a=>collapsedAssets.add(a.id));}
+    else {collapsedCatalogs.clear();if(!expand)Object.keys(atomicKinds).forEach(id=>collapsedCatalogs.add(id));}
+    renderLibrary();return;
+  }
+  const catalog=e.target.closest('[data-collapse-catalog]');if(catalog){const id=catalog.dataset.collapseCatalog;collapsedCatalogs.has(id)?collapsedCatalogs.delete(id):collapsedCatalogs.add(id);renderLibrary();return;}
+  const createAtom=e.target.closest('[data-create-atomic]');if(createAtom){closeDialog();createAtomic(createAtom.dataset.createAtomic);return;}
+  const attachBlock=e.target.closest('[data-attach-behaviour]');if(attachBlock){attachBehaviour(attachBlock.dataset.attachBehaviour);return;}
+  const editAssetBehaviours=e.target.closest('[data-edit-asset-behaviours]');if(editAssetBehaviours){const a=asset(editAssetBehaviours.dataset.editAssetBehaviours);if(a)behaviourTools.edit(a);return;}
+  const block=e.target.closest('[data-edit-behaviour-block],[data-behaviour-block]');if(block){const id=block.dataset.editBehaviourBlock||block.dataset.behaviourBlock;behaviourTools.block(currentProject().behaviourLibrary?.find(b=>b.id===id));return;}
   const collapse=e.target.closest('[data-collapse-asset]');if(collapse){const id=collapse.dataset.collapseAsset;collapsedAssets.has(id)?collapsedAssets.delete(id):collapsedAssets.add(id);renderLibrary();return;}
   const toggle=e.target.closest('[data-toggle-state]');if(toggle){const a=asset(toggle.dataset.toggleState),i=level().instances.find(i=>i.id===toggle.dataset.stateInstance);if(a)dispatch(i?{type:'instance.state',data:{levelId:level().id,id:i.id,stateId:a.id,enabled:!stateEnabled(currentProject(),a,i)}}:{type:'asset.update',data:{id:a.id,enabled:!stateEnabled(currentProject(),a)}});return;}
-  const child=e.target.closest('[data-inspect-child]');if(child){selected={type:'asset',id:child.dataset.inspectChild};staged=null;render();return;}
+  const child=e.target.closest('[data-inspect-child]');if(child){
+    if(!asset(child.dataset.inspectChild))return;
+    selected={type:'asset',id:child.dataset.inspectChild};staged=null;render();
+    $('#definition-contents').scrollTop=0;
+    if(e.detail===0){const focus=$('#inspector .definition-back')||$('#inspector h3');if(focus){if(focus.tagName!=='BUTTON')focus.tabIndex=-1;focus.focus({preventScroll:true});}}
+    return;
+  }
   const createKind=e.target.closest('[data-create-kind]');if(createKind)return tokenDialog(undefined,createKind.dataset.createKind,createKind.dataset.parent||null);
   const objectLink=e.target.closest('[data-object-link]');if(objectLink){selected={type:'objectLink',id:objectLink.dataset.objectLink};staged=null;render();return;}
   const editObjectLink=e.target.closest('[data-edit-object-link]');if(editObjectLink)return objectLinkDialog(level().objectLinks.find(link=>link.id===editObjectLink.dataset.editObjectLink));
@@ -1054,6 +1128,7 @@ document.addEventListener('click', e=>{
     case 'turn-log':turnLog();break;
     case 'library-expand':expandLibrary(!$('#workshop-sidebar').classList.contains('library-expanded'));break;
     case 'definition-only':showDefinitionOnly(!$('#workshop-sidebar').classList.contains('definition-only'));break;
+    case 'definition-toggle':collapseDefinition($('#definition-toggle').getAttribute('aria-expanded')==='true');break;
     case 'inventory-toggle':inventoryExpanded=!inventoryExpanded;renderInventory();break;
     case 'graveyard-toggle':graveyardExpanded=!graveyardExpanded;renderInventory(true);break;
     case 'post-it-tool':toast('Drag Post-it from the floating toolbar onto the canvas.');break;
@@ -1065,13 +1140,15 @@ document.addEventListener('click', e=>{
       const theme=document.documentElement.dataset.theme==='light'?'dark':'light';
       applyTheme(theme);try{localStorage.setItem('workshop-theme',theme);}catch{}break;
     }
-    case 'create-token':case 'empty-create':if(libraryTab==='tags')tagDialog();else tokenDialog(undefined,libraryTab==='parameters'?'parameter':'token');break;
+    case 'create-token':case 'empty-create':
+      if(libraryTab==='atomic')showDialog(modal('Create an atomic parameter',`<div class="atomic-create-options">${Object.entries(atomicKinds).map(([id,label])=>`<button data-create-atomic="${id}">＋ ${label}</button>`).join('')}</div>`));
+      else tokenDialog();break;
     case 'create-tag':tagDialog();break;
     case 'guide-btn':case 'inspector-guide':guideDialog();break;
     case 'files-btn':filesDialog();break;
     case 'options-btn':optionsDialog();break;
     case 'share-btn':shareDialog();break;
-    case 'load-example':loadExample();break;
+    case 'load-example':case 'load-example-atomic':loadExample();break;
     case 'level-settings':levelSettings();break;
     case 'zoom-in':changeZoom(.1);break;
     case 'zoom-out':changeZoom(-.1);break;
@@ -1114,7 +1191,7 @@ document.addEventListener('input',e=>{
     noteTimer=setTimeout(saveNote,400);setStatus();
   }
 });
-$('#asset-search').oninput=e=>{search=e.target.value.toLowerCase().trim();renderLibrary();};
+for(const view of ['objects','atomic'])$('#asset-search'+(view==='objects'?'':'-atomic')).oninput=e=>{librarySearch[view]=e.target.value.toLowerCase().trim();renderLibrary();};
 $('#import-file').onchange=async e=>{
   const file=e.target.files[0];e.target.value='';if(!file)return;
   if(file.size>2_000_000)return toast('Choose a project smaller than 2 MB.');
@@ -1122,27 +1199,29 @@ $('#import-file').onchange=async e=>{
 };
 document.addEventListener('pointerdown',e=>{
   if(['link','patrol'].includes(tool)&&e.target.closest('#board'))return;
-  if(e.button!==0||$('#dialog').open||e.target.closest('[data-use-object],[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
+  if(e.button!==0||$('#dialog').open||e.target.closest('[data-use-object],[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset],[data-attach-behaviour],[data-edit-behaviour-block]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
   if(tool==='postIt'&&e.target.closest('#board'))return;
-  const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),note=e.target.closest('[data-post-it]');
+  const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),blockRow=!play&&e.target.closest('[data-behaviour-block]'),note=e.target.closest('[data-post-it]');
   const inventoryItem=play&&e.target.closest('[data-inventory-item],[data-graveyard-item]');
   if(e.target.closest('[data-discard-inventory],[data-discard-graveyard],[data-stack-adjust]'))return;
-  if(!inventoryItem&&!note&&!piece&&!row&&(!tagRow||play))return;
+  if(!inventoryItem&&!note&&!piece&&!row&&!blockRow&&(!tagRow||play))return;
   e.preventDefault();
-  pointerDrag={startX:e.clientX,startY:e.clientY,active:false,payload:inventoryItem?{type:inventoryItem.dataset.graveyardItem?'graveyard':'inventory',id:inventoryItem.dataset.graveyardItem||inventoryItem.dataset.inventoryItem}:note?{type:'postIt',id:note.dataset.postIt,levelId:level().id}:piece?{type:'instance',id:piece.dataset.instance,levelId:level().id}:tagRow?{type:'tag',id:tagRow.dataset.tag}:{type:'asset',id:row.dataset.asset}};
+  pointerDrag={startX:e.clientX,startY:e.clientY,active:false,payload:inventoryItem?{type:inventoryItem.dataset.graveyardItem?'graveyard':'inventory',id:inventoryItem.dataset.graveyardItem||inventoryItem.dataset.inventoryItem}:note?{type:'postIt',id:note.dataset.postIt,levelId:level().id}:piece?{type:'instance',id:piece.dataset.instance,levelId:level().id}:blockRow?{type:'behaviour',id:blockRow.dataset.behaviourBlock}:tagRow?{type:'tag',id:tagRow.dataset.tag}:{type:'asset',id:row.dataset.asset}};
 });
 document.addEventListener('pointermove',e=>{
   if(!pointerDrag)return;
   if(!pointerDrag.active&&Math.hypot(e.clientX-pointerDrag.startX,e.clientY-pointerDrag.startY)>5){
     pointerDrag.active=true;
-    const a=pointerDrag.payload.type==='tag'?tag(pointerDrag.payload.id):pointerDrag.payload.type==='asset'?asset(pointerDrag.payload.id):asset((pointerDrag.payload.type==='inventory'?playerInventory:pointerDrag.payload.type==='graveyard'?graveyard:level().instances).find(i=>i.id===pointerDrag.payload.id)?.assetId);
-    const ghost=document.createElement('div');ghost.id='drag-ghost';ghost.innerHTML=`${pointerDrag.payload.type==='postIt'?'▧':pointerDrag.payload.type==='tag'?'#':a?tokenArt(a):sprite('rock')}<span>${pointerDrag.payload.type==='postIt'?'Post-it':esc(a?.name)}</span>`;document.body.append(ghost);
+    const a=pointerDrag.payload.type==='behaviour'?currentProject().behaviourLibrary?.find(b=>b.id===pointerDrag.payload.id):pointerDrag.payload.type==='tag'?tag(pointerDrag.payload.id):pointerDrag.payload.type==='asset'?asset(pointerDrag.payload.id):asset((pointerDrag.payload.type==='inventory'?playerInventory:pointerDrag.payload.type==='graveyard'?graveyard:level().instances).find(i=>i.id===pointerDrag.payload.id)?.assetId);
+    const ghost=document.createElement('div');ghost.id='drag-ghost';ghost.innerHTML=`${pointerDrag.payload.type==='postIt'?'▧':pointerDrag.payload.type==='behaviour'?'⚙':pointerDrag.payload.type==='tag'?'#':a?tokenArt(a):sprite('rock')}<span>${pointerDrag.payload.type==='postIt'?'Post-it':esc(a?.name)}</span>`;document.body.append(ghost);
   }
   if(!pointerDrag.active)return;
   const ghost=$('#drag-ghost');ghost.style.left=`${e.clientX+14}px`;ghost.style.top=`${e.clientY+14}px`;
   document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));
   const target=document.elementFromPoint(e.clientX,e.clientY),cell=target?.closest('.cell'),row=target?.closest('[data-asset]'),root=target?.closest('[data-root-drop]');
-  if(play&&target?.closest('#player-graveyard')&&pointerDrag.payload.type==='instance')$('#player-graveyard').classList.add('drop-target');
+  clearBehaviourDrop();
+  if(pointerDrag.payload.type==='behaviour'||pointerDrag.payload.type==='tag'){if(!play){const dest=pointerDrag.payload.type==='behaviour'&&behaviourDropTarget(target,e.clientX,e.clientY);if(dest)dest.element.classList.add(dest.marker,'behaviour-drop-hover','nest-hover');else (row||target?.closest('[data-instance]'))?.classList.add('nest-hover');}}
+  else if(play&&target?.closest('#player-graveyard')&&pointerDrag.payload.type==='instance')$('#player-graveyard').classList.add('drop-target');
   else if(play&&target?.closest('#player-inventory')&&['asset','instance'].includes(pointerDrag.payload.type))$('#player-inventory').classList.add('drop-target');
   else if(cell&&pointerDrag.payload.type!=='tag'&&(!play||pointerDrag.payload.type!=='asset'))cell.classList.add('drop-target');else if(!play)(pointerDrag.payload.type==='tag'?row:row||root)?.classList.add('nest-hover');
 });
@@ -1150,15 +1229,17 @@ document.addEventListener('pointerup',e=>{
   if(!pointerDrag)return;
   const drag=pointerDrag;pointerDrag=null;$('#drag-ghost')?.remove();
   document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));
-  if(drag.active){suppressClickUntil=Date.now()+200;dropToken(document.elementFromPoint(e.clientX,e.clientY),drag.payload);}
+  clearBehaviourDrop();
+  if(drag.active){suppressClickUntil=Date.now()+200;dropToken(document.elementFromPoint(e.clientX,e.clientY),drag.payload,e.clientX,e.clientY);}
 });
 document.addEventListener('pointercancel',()=>{pointerDrag=null;$('#drag-ghost')?.remove();});
 document.addEventListener('dragstart',e=>{
   if(pointerDrag){e.preventDefault();return;}
-  const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]');
+  const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),blockRow=e.target.closest('[data-behaviour-block]');
   const inventoryItem=play&&e.target.closest('[data-inventory-item],[data-graveyard-item]');
   if(inventoryItem)dragPayload={type:inventoryItem.dataset.graveyardItem?'graveyard':'inventory',id:inventoryItem.dataset.graveyardItem||inventoryItem.dataset.inventoryItem};
   else if(piece)dragPayload={type:'instance',id:piece.dataset.instance,levelId:level().id};
+  else if(blockRow&&!play)dragPayload={type:'behaviour',id:blockRow.dataset.behaviourBlock};
   else if(tagRow&&!play)dragPayload={type:'tag',id:tagRow.dataset.tag};
   else if(row)dragPayload={type:'asset',id:row.dataset.asset};
   else {e.preventDefault();return;}
@@ -1169,27 +1250,33 @@ document.addEventListener('dragover',e=>{
   const cell=e.target.closest('.cell'),row=e.target.closest('[data-asset]'),root=e.target.closest('[data-root-drop]'),piece=e.target.closest('[data-instance]');
   const graveyardTarget=play&&e.target.closest('#player-graveyard')&&dragPayload.type==='instance';
   const inventoryTarget=play&&e.target.closest('#player-inventory')&&['asset','instance'].includes(dragPayload.type);
-  const valid=graveyardTarget||inventoryTarget||(dragPayload.type==='tag'?!play&&(row||piece):((!play||dragPayload.type!=='asset')&&(cell||piece))||(dragPayload.type==='asset'&&!play&&(row||root)));
+  const behaviourTarget=!play&&dragPayload.type==='behaviour'&&behaviourDropTarget(e.target,e.clientX,e.clientY);
+  if(behaviourTarget){e.preventDefault();e.dataTransfer.dropEffect='copy';clearBehaviourDrop();behaviourTarget.element.classList.add(behaviourTarget.marker,'behaviour-drop-hover');return;}
+  clearBehaviourDrop();
+  const valid=graveyardTarget||inventoryTarget||(['tag','behaviour'].includes(dragPayload.type)?!play&&(row||piece):((!play||dragPayload.type!=='asset')&&(cell||piece))||(dragPayload.type==='asset'&&!play&&(row||root)));
   if(valid){e.preventDefault();e.dataTransfer.dropEffect=dragPayload.type==='asset'&&(inventoryTarget||cell||piece)?'copy':'move';}
   document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));
-  if(graveyardTarget)$('#player-graveyard').classList.add('drop-target');else if(inventoryTarget)$('#player-inventory').classList.add('drop-target');else if(valid&&cell)cell.classList.add('drop-target');else if(row&&dragPayload.type==='asset'&&!play)row.classList.add('nest-hover');else if(root)root.classList.add('nest-hover');
+  if(graveyardTarget)$('#player-graveyard').classList.add('drop-target');else if(inventoryTarget)$('#player-inventory').classList.add('drop-target');else if(valid&&['tag','behaviour'].includes(dragPayload.type))(row||piece)?.classList.add('nest-hover');else if(valid&&cell)cell.classList.add('drop-target');else if(row&&dragPayload.type==='asset'&&!play)row.classList.add('nest-hover');else if(root)root.classList.add('nest-hover');
 });
 document.addEventListener('drop',e=>{
   if(!dragPayload)return;e.preventDefault();const payload=dragPayload;dragPayload=null;
   document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));
-  dropToken(e.target,payload);
+  clearBehaviourDrop();dropToken(e.target,payload,e.clientX,e.clientY);
 });
-function dropToken(target,payload){
+function dropToken(target,payload,x,y){
   if(!target)return;
+  const behaviourTarget=!play&&payload.type==='behaviour'&&behaviourDropTarget(target,x,y);
+  if(behaviourTarget){dispatch({type:'behaviour.insert',data:{id:behaviourTarget.id,definitionId:payload.id,usageId:uid(),beforeId:behaviourTarget.beforeId}});return;}
   if(play&&target.closest('#player-graveyard')){collectInInventory(payload,true);return;}
   if(play&&target.closest('#player-inventory')){collectInInventory(payload);return;}
   if(payload.type==='postIt'){
     const pos=cursorCell();if(pos&&target.closest('#board')&&payload.levelId===level().id){selected={type:'postIt',id:payload.id};dispatch({type:'postIt.update',data:{levelId:payload.levelId,id:payload.id,...pos}});}return;
   }
-  if(payload.type==='tag'){
+  if(payload.type==='tag'||payload.type==='behaviour'){
     if(play)return;
     const row=target.closest('[data-asset]'),piece=target.closest('[data-instance]');
     const a=row?asset(row.dataset.asset):piece?asset(level().instances.find(i=>i.id===piece.dataset.instance)?.assetId):null;
+    if(payload.type==='behaviour'){attachBehaviour(payload.id,a);return;}
     if(a && !a.tags.includes(payload.id))dispatch({type:'asset.update',data:{id:a.id,tags:[...a.tags,payload.id]}});
     return;
   }
@@ -1212,7 +1299,7 @@ function dropToken(target,payload){
     if(dispatch(action)!==false)toast(parentId?(isParameter(moving)?'Shared parameter attached. It remains available in the library.':'Token nested. Its parameters travel with the parent.'):'Token detached.');
   }
 }
-document.addEventListener('dragend',()=>{dragPayload=null;document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));});
+document.addEventListener('dragend',()=>{dragPayload=null;clearBehaviourDrop();document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));});
 $('#board').addEventListener('pointerdown',e=>{
   if(!play&&!staged&&tool==='patrol'&&e.button===0){
     const pos=patrolPointerCell(e);if(!pos||!hasNode(level(),pos.x+','+pos.y))return;
@@ -1235,9 +1322,9 @@ document.addEventListener('keydown',e=>{
   if($('#dialog').open || $('#workshop-step-dialog').open)return;
   const libraryView=e.target.closest('[data-library-tab]');
   if(libraryView&&['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
-    e.preventDefault();const tabs=['objects','tokens','parameters','tags','all'],index=tabs.indexOf(libraryTab);
-    libraryTab=tabs[e.key==='Home'?0:e.key==='End'?4:(index+(e.key==='ArrowRight'?1:4))%5];
-    renderLibrary();$('#library-tab-'+libraryTab).focus();return;
+    e.preventDefault();const tabs=['objects','atomic'],index=tabs.indexOf(libraryView.dataset.libraryTab);
+    const tab=tabs[e.key==='Home'?0:e.key==='End'?1:(index+1)%2];
+    panels.select(tab);$('#library-tab-'+tab).focus();return;
   }
   const editing=e.target.matches('input,textarea,select,[contenteditable]');if(editing)return;
   if(e.ctrlKey||e.metaKey){
@@ -1248,11 +1335,12 @@ document.addEventListener('keydown',e=>{
   }
   if((e.ctrlKey||e.metaKey)&&['z','y'].includes(e.key.toLowerCase())){e.preventDefault();undo(e.key.toLowerCase()==='y'||e.shiftKey);return;}
   if(e.key==='Escape'){staged=null;selected=null;connectionStart=null;linkDraft=[];tool='select';render();return;}
-  if(e.key==='/'){e.preventDefault();$('#asset-search').focus();return;}
+  if(e.key==='/'){e.preventDefault();const input=$('#asset-search'+(libraryTab==='objects'?'':'-atomic'));input.focus();return;}
   if(e.key.toLowerCase()==='p'){e.preventDefault();$('#post-it-tool').focus();toast('Drag Post-it onto the canvas.');return;}
   if(e.key.toLowerCase()==='r'){e.preventDefault();if(e.shiftKey)rotate();else rotateFacing();return;}
   if(['Delete','Backspace'].includes(e.key)){e.preventDefault();removeSelected();return;}
   if(e.key==='Enter'){
+    const block=e.target.closest('[data-behaviour-block]');if(block&&e.target===block){e.preventDefault();behaviourTools.block(currentProject().behaviourLibrary?.find(b=>b.id===block.dataset.behaviourBlock));return;}
     const linkPiece=e.target.closest('[data-instance]');if(tool==='link'&&linkPiece){e.preventDefault();pickLinkObject(linkPiece.dataset.instance);return;}
     const cell=e.target.closest('.cell'),row=e.target.closest('[data-asset]');
     if(row){selected={type:'asset',id:row.dataset.asset};render();return;}

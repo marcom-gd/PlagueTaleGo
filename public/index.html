@@ -55,14 +55,17 @@
       <div class="library-heading"><div><div class="eyebrow">YOUR BUILDING BLOCKS</div><h2>Workshop library <span id="asset-count">0</span></h2></div><div class="library-heading-actions"><button id="library-expand" aria-label="Expand library vertically" aria-pressed="false" title="Expand library vertically">↕</button><button id="definition-only" aria-label="Show only definition" aria-pressed="false" title="Show only definition">▤</button><button id="create-token" class="square-primary" aria-label="Create token">＋</button></div></div>
       <section class="library-browser" aria-label="Token library">
       <div id="library-tabs" class="library-tabs" role="tablist" aria-label="Library views"></div>
-      <div class="search-wrap"><span>⌕</span><input id="asset-search" placeholder="Find a token or tag…" aria-label="Find a token or tag"><kbd>/</kbd></div>
+      <div class="library-tree-tools"><div id="library-filters" class="library-filters" aria-label="Atomic parameter filters" hidden></div><button id="library-collapse-all">Collapse all</button></div>
+      <div class="search-wrap"><span>⌕</span><input id="asset-search" placeholder="Find a building block…" aria-label="Find a building block"><kbd>/</kbd></div>
       <div class="library-body" id="library" role="tabpanel"></div>
       <div id="library-root-drop" class="root-drop" data-root-drop>Drop here to make a standalone token</div>
       </section>
       <div class="definition-panels">
-      <div class="library-tip"><span>↳</span> Drag tokens or parameters onto a token to nest.<br>Drag a tag onto a token to attach it.</div>
+      <button id="definition-toggle" class="definition-toggle" aria-expanded="true" aria-controls="definition-contents"><span>Definition</span><span aria-hidden="true">▾</span></button>
+      <div id="definition-contents">
       <section id="inspector" class="inspector"></section>
       <div class="sidebar-footer"><span class="tiny-dot"></span> A sandbox for game designers <span>✧</span></div>
+      </div>
       </div>
     </aside>
   </main>

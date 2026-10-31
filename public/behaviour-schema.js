@@ -1,15 +1,18 @@
 // Data checks are shared by project imports, editing actions and turn playback.
-export const behaviourNames = {expand:'Expand',applyEffect:'Apply Effect',moveTo:'Move To',blockNode:'Block Node',useEffect:'Use and Apply Effect',teleport:'Teleport',advanceOnEvent:'Advance Turn On Event'};
-export const effectActions = {switchState:'Switch State',graveyard:'Send to Graveyard',setMoveTarget:'Set Move Target',flush:'Flush',teleport:'Teleport'};
+export const behaviourNames = {expand:'Expand',spawn:'Spawn',addToTray:'Add to Graveyard / Inventory',applyEffect:'Apply Effect',moveTo:'Move To',moveAway:'Move Away From',blockNode:'Block Node',useEffect:'Use',teleport:'Teleport',advanceOnEvent:'Advance Turn On Event'};
+export const triggerBehaviours=Object.fromEntries(Object.entries(behaviourNames).filter(([type])=>['applyEffect','moveTo','moveAway','teleport','expand','spawn','addToTray'].includes(type)));
+export const effectActions = {switchState:'Switch State',graveyard:'Send to Graveyard',inventory:'Add to Inventory',setMoveTarget:'Set Move Target',flush:'Flush',teleport:'Teleport'};
 export const turnEvents = {use:'Use',moved:'Object Moved',inventoryAdded:'Object Added To Inventory',inventoryDropped:'Object Dropped from Inventory'};
 export const eligibilityMode = b => b.eligibleMode ?? (b.eligibleAssetIds===null?'any':'selected');
 const key = value => typeof value==='string' && value.length>0 && value.length<=100;
 const selection = value => value===null || Array.isArray(value)&&value.length<=500&&new Set(value).size===value.length&&value.every(key);
+export function validateTags(value){if(!Array.isArray(value)||!selection(value))throw Error('Invalid target tags.');}
 export function validateReferenceOverrides(value){
   if(value!==undefined&&(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length>60000||Object.entries(value).some(([id,target])=>!key(id)||!key(target))))throw Error('Invalid copied object references.');
 }
 export function validateMoveTarget(target) {
-  if(!target || !['self','position','object'].includes(target.type))throw Error('Invalid move target.');
+  if(!target || !['self','position','object','tags'].includes(target.type))throw Error('Invalid move target.');
+  if(target.type==='tags')validateTags(target.tagIds);
   if(target.type==='object' && !key(target.id))throw Error('Choose a canvas object for the move target.');
   if(target.type==='position' && (!Number.isInteger(target.x)||!Number.isInteger(target.y)||target.x<0||target.y<0||target.x>31||target.y>23))throw Error('Invalid move target position.');
 }
@@ -24,25 +27,36 @@ export function validateBehaviours(asset,isEffect) {
   for(const b of asset.behaviours){
     if(!b || !key(b.id)||ids.has(b.id)||!Object.hasOwn(behaviourNames,b.type)||typeof b.enabled!=='boolean')throw Error('Invalid behaviour.');
     ids.add(b.id);
-    if(b.stateToggle!==undefined&&(typeof b.stateToggle!=='boolean'||b.stateToggle&&(b.type!=='useEffect'||b.action!=='switchState')))throw Error('State Toggle is available for Use with Switch State.');
+    if(b.definitionId!==undefined&&!key(b.definitionId))throw Error('Invalid reusable behaviour reference.');
+    if(b.stateToggle!==undefined&&(typeof b.stateToggle!=='boolean'||b.stateToggle&&(!['applyEffect','useEffect'].includes(b.type)||b.action!=='switchState')))throw Error('State Toggle is available for Apply Effect or Use with Switch State.');
+    for(const key of ['eligibleTagIds','usableTagIds','blockTagIds','targetTagIds'])if(b[key]!==undefined)validateTags(b[key]);
+    if(b.trigger!==undefined){
+      if(b.type!=='useEffect'||!b.trigger||!Object.hasOwn(triggerBehaviours,b.trigger.type)||b.trigger.trigger!==undefined||b.trigger.definitionId!==undefined)throw Error('Choose an active behaviour for Use.');
+      validateBehaviours({behaviours:[b.trigger]},true);
+    }
     if(b.excludeSelf!==undefined&&typeof b.excludeSelf!=='boolean')throw Error('Invalid Exclude Self option.');
     if(b.flushReach!==undefined&&b.flushReach!==null&&(!Number.isInteger(b.flushReach)||b.flushReach<1||b.flushReach>768))throw Error('Flush reach must be 1–768 continuous cells or Infinite.');
+    if(b.flushPreserve!==undefined&&(!Number.isInteger(b.flushPreserve)||b.flushPreserve<0||b.flushPreserve>768))throw Error('Flush must preserve 0–768 starting cells.');
     if(['expand','applyEffect','blockNode','useEffect'].includes(b.type)&&!isEffect)throw Error('Area behaviours must be assigned to an effect.');
     if(b.type==='expand'&&typeof b.allowStacking!=='boolean')throw Error('Invalid expansion stacking option.');
     if(b.type==='applyEffect'||b.type==='useEffect'){
-      if(!Object.hasOwn(effectActions,b.action))throw Error('Choose an effect action.');
-      if(b.type==='applyEffect'&&(!selection(b.eligibleAssetIds)||!['any','selected','linked'].includes(eligibilityMode(b))))throw Error('Invalid eligible objects.');
-      if(b.type==='useEffect'&&(!selection(b.usableAssetIds)||!['used','linked'].includes(b.useTarget)))throw Error('Choose usable objects and a use target.');
+      if(!b.trigger&&!Object.hasOwn(effectActions,b.action))throw Error('Choose an effect action.');
+      if(b.type==='applyEffect'&&(!selection(b.eligibleAssetIds)||!['any','selected','linked','tags'].includes(eligibilityMode(b))||eligibilityMode(b)==='tags'&&!Array.isArray(b.eligibleTagIds)))throw Error('Invalid eligible objects.');
+      if(b.type==='useEffect'&&(!selection(b.usableAssetIds)||!['used','linked','tags'].includes(b.useTarget)||b.usableMode!==undefined&&!['any','selected','tags'].includes(b.usableMode)||b.usableMode==='tags'&&!Array.isArray(b.usableTagIds)||b.useTarget==='tags'&&!Array.isArray(b.targetTagIds)))throw Error('Choose usable objects and a use target.');
       if(b.action==='switchState'&&(!key(b.stateKey)||typeof b.stateEnabled!=='boolean'))throw Error('Choose a state or enter its key.');
       if(b.action==='setMoveTarget')validateMoveTarget(b.moveTarget);
       if(b.action==='teleport')validateDestination(b.destination);
     }
     if(b.type==='moveTo'){
       if(!Number.isInteger(b.steps)||b.steps<1||b.steps>100||!['current','patrolStart','patrolEnd'].includes(b.target)||!(b.patrolId===null||key(b.patrolId)))throw Error('Invalid Move To settings.');
+      if(b.patrolMode!==undefined&&!['loop','pingPong'].includes(b.patrolMode))throw Error('Choose Loop or Ping-pong for the patrol.');
     }
-    if(b.type==='blockNode'&&(!selection(b.blockAssetIds)||!['movement','movementAndEffects'].includes(b.blockScope)))throw Error('Invalid Block Node settings.');
+    if(b.type==='spawn'&&(!key(b.spawnAssetId)||!Number.isInteger(b.spawnCount)||b.spawnCount<1||b.spawnCount>100))throw Error('Spawn needs an object type and 1–100 copies.');
+    if(b.type==='addToTray'&&!['graveyard','inventory'].includes(b.tray))throw Error('Choose Graveyard or Inventory.');
+    if(b.type==='moveAway'&&(!Number.isInteger(b.steps)||b.steps<1||b.steps>100))throw Error('Move Away From needs 1–100 steps.');
+    if(b.type==='blockNode'&&(!selection(b.blockAssetIds)||b.blockMode!==undefined&&!['any','selected','tags'].includes(b.blockMode)||b.blockMode==='tags'&&!Array.isArray(b.blockTagIds)||!['movement','movementAndEffects'].includes(b.blockScope)))throw Error('Invalid Block Node settings.');
     if(b.type==='teleport'){
-      if(!['self','object'].includes(b.teleportTarget)||b.teleportTarget==='object'&&!key(b.targetInstanceId))throw Error('Choose an object to teleport.');
+      if(!['self','object','tags'].includes(b.teleportTarget)||b.teleportTarget==='object'&&!key(b.targetInstanceId)||b.teleportTarget==='tags'&&!Array.isArray(b.targetTagIds))throw Error('Choose an object to teleport.');
       validateDestination(b.destination);
     }
     if(b.type==='advanceOnEvent'&&(!Array.isArray(b.events)||!b.events.length||b.events.length>4||new Set(b.events).size!==b.events.length||b.events.some(event=>!Object.hasOwn(turnEvents,event))))throw Error('Select at least one event to advance the turn.');

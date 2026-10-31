@@ -1,5 +1,6 @@
+import {matchesSelection} from './object-selection.js';
 import { iconNames, iconVariants, defaultVariant } from './icons.js';
-import { validateBehaviours, validateMoveTarget, validateReferenceOverrides } from './behaviour-schema.js';
+import { validateBehaviours, validateMoveTarget, validateReferenceOverrides, validateTags } from './behaviour-schema.js';
 // randomUUID is unavailable on plain HTTP LAN addresses, unlike localhost.
 export const uid = () => {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -87,8 +88,18 @@ export const isState = a => a?.kind === 'state';
 export const parameterIcons = ['area','self','sight','cone','rectangle','cross'];
 export const isParameter = a => !isState(a) && parameterIcons.includes(a?.icon);
 // Uses keep their own hierarchy identity, while these properties belong to the definition.
-const parameterKeys=['name','icon','variant','rule','tags','color','range','width','rotation','direction','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','behaviours'];
+const parameterKeys=['name','icon','variant','rule','tags','color','range','width','rotation','direction','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','overlapTagIds','behaviours'];
 export const parameterDefinition = (project,a) => a?.parameterId ? project.assets.find(b=>b.id===a.parameterId) : a;
+export const sharedBehaviour = (definition,id) => ({...clone(definition.behaviour),id,definitionId:definition.id});
+const sameJSON=(a,b)=>a===b||!!a&&!!b&&typeof a==='object'&&typeof b==='object'&&Array.isArray(a)===Array.isArray(b)&&Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(key=>Object.hasOwn(b,key)&&sameJSON(a[key],b[key]));
+function syncBehaviours(p) {
+  for(const a of p.assets)if(!a.parameterId&&a.behaviours)a.behaviours=a.behaviours.map(b=>{
+    if(!b.definitionId)return b;
+    const definition=p.behaviourLibrary?.find(d=>d.id===b.definitionId);
+    if(!definition)throw Error('Missing reusable behaviour definition.');
+    return sharedBehaviour(definition,b.id);
+  });
+}
 function syncParameters(p) {
   for(const use of p.assets.filter(a=>a.parameterId)) {
     const definition=parameterDefinition(p,use);
@@ -129,6 +140,15 @@ export function validateProject(p) {
   if(p.behaviourOrder!==undefined&&(!Array.isArray(p.behaviourOrder)||p.behaviourOrder.length>15000||new Set(p.behaviourOrder).size!==p.behaviourOrder.length||p.behaviourOrder.some(id=>typeof id!=='string'||!id||id.length>100)))throw Error('Invalid behaviour resolution order.');
   const behaviourIds=new Set();
   const reserve = id => { if (typeof id !== 'string' || !id || id.length > 100 || ids.has(id)) throw Error('Invalid or duplicate item ID.'); ids.add(id); };
+  if(p.behaviourLibrary!==undefined&&(!Array.isArray(p.behaviourLibrary)||p.behaviourLibrary.length>500))throw Error('Invalid behaviour library.');
+  for(const definition of p.behaviourLibrary||[]){
+    reserve(definition.id);
+    if(definition.color!==undefined&&!/^#[0-9a-f]{6}$/i.test(definition.color))throw Error('Invalid behaviour color.');
+    if(typeof definition.name!=='string'||!definition.name.trim()||definition.name.length>80||typeof definition.rule!=='string'||definition.rule.length>4000||!definition.behaviour||definition.behaviour.definitionId!==undefined)throw Error('Invalid reusable behaviour definition.');
+    validateBehaviours({behaviours:[definition.behaviour]},true);
+    if(behaviourIds.has(definition.behaviour.id))throw Error('Duplicate behaviour ID.');
+    behaviourIds.add(definition.behaviour.id);
+  }
   if(!Array.isArray(p.cardDraws)||p.cardDraws.length>1000)throw Error('Invalid card history.');
   const drawn=new Set();
   for(const draw of p.cardDraws){
@@ -148,6 +168,10 @@ export function validateProject(p) {
   for (const a of p.assets) {
     reserve(a.id);
     validateBehaviours(a,isParameter(a));
+    for(const b of a.behaviours||[])if(b.definitionId){
+      const definition=p.behaviourLibrary?.find(d=>d.id===b.definitionId);
+      if(!definition||!sameJSON(b,sharedBehaviour(definition,b.id)))throw Error('Invalid reusable behaviour reference.');
+    }
     if(!a.parameterId)for(const b of a.behaviours||[]){if(behaviourIds.has(b.id))throw Error('Duplicate behaviour ID.');behaviourIds.add(b.id);}
     if(a.exclusiveStates!==undefined&&typeof a.exclusiveStates!=='boolean')throw Error('Invalid exclusive states option.');
     for(const key of ['autoFacing','followTokenFacing'])if(a[key]!==undefined && typeof a[key]!=='boolean')throw Error('Invalid facing option.');
@@ -156,6 +180,7 @@ export function validateProject(p) {
     if(a.occludedByWalls!==undefined && typeof a.occludedByWalls!=='boolean')throw Error('Invalid wall occlusion.');
     if(a.overlapThreshold!==undefined && (!Number.isInteger(a.overlapThreshold)||a.overlapThreshold<0||a.overlapThreshold>1000))throw Error('Invalid overlap threshold.');
     if(a.overlapAssetIds!=null && (!Array.isArray(a.overlapAssetIds)||a.overlapAssetIds.length>500||new Set(a.overlapAssetIds).size!==a.overlapAssetIds.length||a.overlapAssetIds.some(id=>!p.assets.some(b=>b.id===id&&!isState(b)&&!parameterIcons.includes(b.icon)))))throw Error('Invalid overlap objects.');
+    if(a.overlapTagIds!=null)validateTags(a.overlapTagIds);
     if(a.overlapColor!==undefined && !/^#[0-9a-f]{6}$/i.test(a.overlapColor))throw Error('Invalid overlap color.');
     if(a.width!==undefined && (!Number.isInteger(a.width)||a.width<1||a.width>12))throw Error('Invalid effect width.');
     if(a.kind!==undefined && !['token','state'].includes(a.kind))throw Error('Invalid token kind.');
@@ -221,7 +246,7 @@ export function validateProject(p) {
       reserve(i.id);
       if(i.moveTarget!==undefined&&i.moveTarget!==null)validateMoveTarget(i.moveTarget);
       validateReferenceOverrides(i.referenceOverrides);
-      if(i.patrolProgress!==undefined&&(!i.patrolProgress||typeof i.patrolProgress!=='object'||Array.isArray(i.patrolProgress)||Object.entries(i.patrolProgress).some(([id,v])=>!id||!['start','end'].includes(v))))throw Error('Invalid patrol progress.');
+      if(i.patrolProgress!==undefined&&(!i.patrolProgress||typeof i.patrolProgress!=='object'||Array.isArray(i.patrolProgress)||Object.entries(i.patrolProgress).some(([id,v])=>!id||!['start','end','loopStart','loopEnd'].includes(v))))throw Error('Invalid patrol progress.');
       if(i.patrolColor!=null&&!/^#[0-9a-f]{6}$/i.test(i.patrolColor))throw Error('Invalid placement color dot.');
       if(i.locked!==undefined&&typeof i.locked!=='boolean')throw Error('Invalid scenery lock.');
       if(i.stateOverrides!==undefined){
@@ -250,6 +275,54 @@ export function applyAction(input, action) {
       return applyAction(next,{type:'behaviour.order',data:{ids:d.ids}});
     }
     case 'behaviour.order': p.behaviourOrder=d.ids;break;
+    case 'behaviour.insert': {
+      const next=applyAction(p,{type:'behaviour.attach',data:d});
+      const owner=parameterDefinition(next,next.assets.find(a=>a.id===d.id));
+      const usage=owner.behaviours.find(b=>b.definitionId===d.definitionId);
+      return applyAction(next,{type:'behaviour.move',data:{sourceId:d.id,targetId:d.id,usageId:usage.id,beforeId:d.beforeId}});
+    }
+    case 'behaviour.move': {
+      const source=parameterDefinition(p,p.assets.find(a=>a.id===d.sourceId));
+      const target=parameterDefinition(p,p.assets.find(a=>a.id===d.targetId));
+      const behaviour=source?.behaviours?.find(b=>b.id===d.usageId);
+      if(!source||!target||!behaviour)throw Error('This behaviour or its destination no longer exists.');
+      if(d.beforeId===behaviour.id&&source===target)break;
+      if(d.beforeId&&!target.behaviours?.some(b=>b.id===d.beforeId))throw Error('The destination behaviour no longer exists.');
+      if(source!==target&&behaviour.definitionId&&target.behaviours?.some(b=>b.definitionId===behaviour.definitionId))throw Error('This branch already uses that shared behaviour.');
+      // Capture the complete effective order before changing the asset arrays.
+      const rows=p.assets.filter(a=>!a.parameterId).flatMap(a=>a.behaviours||[]);
+      const ranks=new Map((p.behaviourOrder||[]).map((id,n)=>[id,n]));
+      const order=rows.sort((a,b)=>(ranks.get(a.id)??Infinity)-(ranks.get(b.id)??Infinity)).map(b=>b.id).filter(id=>id!==behaviour.id);
+      source.behaviours=source.behaviours.filter(b=>b.id!==behaviour.id);
+      target.behaviours??=[];
+      const positions=new Map(order.map((id,n)=>[id,n]));
+      target.behaviours.sort((a,b)=>(positions.get(a.id)??Infinity)-(positions.get(b.id)??Infinity));
+      const index=d.beforeId?target.behaviours.findIndex(b=>b.id===d.beforeId):target.behaviours.length;
+      target.behaviours.splice(index,0,behaviour);
+      const following=target.behaviours[index+1],previous=target.behaviours[index-1];
+      const rank=following?order.indexOf(following.id):previous?order.indexOf(previous.id)+1:order.length;
+      order.splice(Math.max(0,rank),0,behaviour.id);p.behaviourOrder=order;
+      break;
+    }
+    case 'behaviour.save': {
+      p.behaviourLibrary??=[];
+      const index=p.behaviourLibrary.findIndex(b=>b.id===d.id);
+      if(index<0)p.behaviourLibrary.push(d);else p.behaviourLibrary[index]=d;
+      break;
+    }
+    case 'behaviour.attach': {
+      const definition=p.behaviourLibrary?.find(b=>b.id===d.definitionId),target=parameterDefinition(p,p.assets.find(a=>a.id===d.id));
+      if(!definition||!target)throw Error('Choose a behaviour block and an item.');
+      target.behaviours??=[];
+      if(!target.behaviours.some(b=>b.definitionId===definition.id))target.behaviours.push(sharedBehaviour(definition,d.usageId));
+      break;
+    }
+    case 'behaviour.delete': {
+      p.behaviourLibrary=(p.behaviourLibrary||[]).filter(b=>b.id!==d.id);
+      // Keep attached logic as independent behaviours when its block is deleted.
+      for(const a of p.assets)for(const b of a.behaviours||[])if(b.definitionId===d.id)delete b.definitionId;
+      break;
+    }
     case 'asset.compose': {
       const existing=p.assets.find(a=>a.id===d.asset.id);
       const savedAsset=isParameter(d.asset)&&!d.asset.parameterId&&d.asset.parentId?{...d.asset,parentId:existing?.parentId||null}:d.asset;
@@ -321,7 +394,7 @@ export function applyAction(input, action) {
       const a=parameterDefinition(p,target);
       if(target.parameterId && 'icon' in d && !parameterIcons.includes(d.icon))throw Error('A reusable parameter needs a parameter shape.');
       if(!target.parameterId && isParameter(a) && 'icon' in d && !parameterIcons.includes(d.icon) && p.assets.some(b=>b.parameterId===a.id))throw Error('Detach all uses before changing this parameter into a token.');
-      for (const key of ['name','icon','variant','kind','enabled','rule','tags','color','range','width','rotation','direction','autoFacing','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','parentId','exclusiveStates','behaviours']) if (key in d) a[key] = d[key];
+      for (const key of ['name','icon','variant','kind','enabled','rule','tags','color','range','width','rotation','direction','autoFacing','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','overlapTagIds','parentId','exclusiveStates','behaviours']) if (key in d) a[key] = d[key];
       if(target.parameterId && 'parentId' in d){target.parentId=d.parentId;a.parentId=null;}
       if(d.exclusiveStates===true){const enabled=p.assets.filter(b=>isState(b)&&b.parentId===a.id&&b.enabled);for(const sibling of enabled.slice(0,-1))sibling.enabled=false;}
       if(d.enabled&&isState(a)&&p.assets.find(b=>b.id===a.parentId)?.exclusiveStates)for(const sibling of p.assets.filter(b=>isState(b)&&b.parentId===a.parentId&&b.id!==a.id))sibling.enabled=false;
@@ -380,6 +453,7 @@ export function applyAction(input, action) {
     case 'project.replace': return validateProject(clone(d));
     default: throw Error('Unknown editor action.');
   }
+  syncBehaviours(p);
   syncParameters(p);
   return validateProject(p);
 }
@@ -428,7 +502,7 @@ export function parameterOverlay(project,root,effect,instance,level) {
   const covered=new Set(cells.map(([x,y])=>`${x},${y}`));
   const count=level.instances.filter(i=>{
     const a=project.assets.find(a=>a.id===i.assetId);
-    return i.id!==instance.id && a && (effect.overlapAssetIds==null || effect.overlapAssetIds.includes(a.id)) && !isState(a) && !parameterIcons.includes(a.icon) && assetIsActive(project,a.id,i) && covered.has(`${i.x},${i.y}`);
+    return i.id!==instance.id && a && matchesSelection(project,i,effect.overlapAssetIds,effect.overlapTagIds) && !isState(a) && !parameterIcons.includes(a.icon) && assetIsActive(project,a.id,i) && covered.has(`${i.x},${i.y}`);
   }).length;
   return {cells,count,color:effect.overlapThreshold>0 && count>=effect.overlapThreshold ? (effect.overlapColor??'#edc47c') : effect.color};
 }

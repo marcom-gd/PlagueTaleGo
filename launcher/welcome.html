@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f7f3eb">
+  <title>Welcome · Plague Tale GO</title>
+  <link rel="stylesheet" href="/welcome.css">
+  <script src="/welcome.js" type="module"></script>
+</head>
+<body>
+  <header><a class="brand" href="/welcome">PLAGUE TALE <b>GO</b><span>THE ATOMIC PARAMETERS WORKSHOP</span></a><span class="host-badge">YOUR HOST DASHBOARD</span></header>
+  <main>
+    <section class="intro">
+      <div class="eyebrow">A LITTLE WORLD. ENDLESS POSSIBILITIES.</div>
+      <h1>Good ideas<br>start here<span>.</span></h1>
+      <p>Build a world, change its rules, and see what happens. Settle in on your own or invite a few curious minds.</p>
+      <div class="mini-board" aria-hidden="true"><span class="piece piece-one">✦</span><span class="piece piece-two">◆</span><span class="piece piece-three">●</span><span class="board-label">BUILD · PLAY · DISCOVER</span></div>
+      <p class="footnote">Your projects stay on this computer.<br>Online sessions share your workshop while this launcher is running.</p>
+    </section>
+    <section class="session-card" aria-labelledby="session-title">
+      <div class="eyebrow">MAKE YOURSELF AT HOME</div>
+      <h2 id="session-title">How are we playing?</h2>
+      <form id="session-form" action="/" target="plague-tale-go-workshop">
+        <fieldset class="session-choices"><legend class="sr-only">Session type</legend>
+          <label class="choice"><input type="radio" name="mode" value="local" checked><span class="choice-icon" aria-hidden="true">⌂</span><span><strong>Local session</strong><small>Just this computer. Ready whenever you are.</small></span></label>
+          <label class="choice"><input type="radio" name="mode" value="online"><span class="choice-icon" aria-hidden="true">↗</span><span><strong>Online session</strong><small>Invite others with a link and session password.</small></span></label>
+        </fieldset>
+        <label class="field-label" for="room">Session name</label>
+        <input id="room" name="room" value="class-a" maxlength="64" pattern="[A-Za-z0-9_-]{1,64}" required spellcheck="false" autocomplete="off" aria-describedby="room-help">
+        <p id="room-help" class="hint">Use the same name to return to a saved room. Letters, numbers, hyphens, and underscores.</p>
+        <section id="online-panel" class="online-panel" aria-label="Online sharing" hidden>
+          <div class="status-line"><span id="status-dot" class="status-dot"></span><strong id="status-title">Preparing your session</strong></div>
+          <p id="status-message" role="status" aria-live="polite"></p>
+          <div id="credentials" hidden>
+            <label class="field-label" for="share-link">Invitation link</label><input id="share-link" readonly>
+            <div class="credential-row"><div><label class="field-label" for="username">Username</label><input id="username" readonly value="workshop"></div><div><label class="field-label" for="password">Session password</label><input id="password" readonly spellcheck="false"></div></div>
+            <button class="secondary full-width" id="copy-invitation" type="button">Copy invitation</button>
+            <p class="hint">Share privately. Anyone with these details can edit every room in this session.</p>
+          </div>
+          <div class="sharing-actions"><button id="retry" type="button" hidden>Try again</button><button id="stop-sharing" class="text-button" type="button" hidden>Stop online sharing</button></div>
+        </section>
+        <p id="page-error" role="alert" hidden></p>
+        <button class="primary full-width" id="start-session" type="submit">Start session <span aria-hidden="true">↗</span></button>
+        <p class="after-start" id="after-start">Opens the workshop in another tab.<br>Keep this page for your session controls.</p>
+      </form>
+    </section>
+  </main>
+  <footer><span>A space for small experiments and big discoveries.</span><span id="connection-status" role="status">Connecting to your launcher…</span></footer>
+</body>
+</html>

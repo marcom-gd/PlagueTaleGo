@@ -54,7 +54,7 @@ export function validateSequence(input){
     frame.project=validateProject(frame.project);
     if(!frame.project.levels.some(l=>l.id===frame.levelId))throw Error('Invalid turn level.');
     validateTray(frame.project,frame.inventory);validateTray(frame.project,frame.graveyard);
-    if(!Array.isArray(frame.log)||frame.log.length>500000||frame.log.some(item=>!item||typeof item.assetName!=='string'||item.assetName.length>80||!Object.hasOwn(behaviourNames,item.type)||!Number.isInteger(item.count)||item.count<0||item.count>1000))throw Error('Invalid turn resolution log.');
+    if(!Array.isArray(frame.log)||frame.log.length>500000||frame.log.some(item=>!item||typeof item.assetName!=='string'||item.assetName.length>80||!Object.hasOwn(behaviourNames,item.type)||!Number.isInteger(item.count)||item.count<0||item.count>100000))throw Error('Invalid turn resolution log.');
   }
   return sequence;
 }

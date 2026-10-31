@@ -12,7 +12,7 @@ import { exportInventory, snapshotKinds } from './inventory-export.mjs';
 import { projectBackups } from './project-backups.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-export async function createWorkshopServer({ dataDir = path.join(root, 'data'), cardsDir = path.join(root, 'cards'), online = null, saveDir = dataDir === path.join(root, 'data') ? path.join(root, 'Saved Projects') : path.join(dataDir, 'Saved Projects'), autosaveIntervalMs = 5 * 60 * 1000 } = {}) {
+export async function createWorkshopServer({ dataDir = path.join(root, 'data'), cardsDir = path.join(root, 'cards'), online = null, host = null, saveDir = dataDir === path.join(root, 'data') ? path.join(root, 'Saved Projects') : path.join(dataDir, 'Saved Projects'), autosaveIntervalMs = 5 * 60 * 1000 } = {}) {
   await mkdir(dataDir, { recursive: true });
   const backups = await projectBackups({ defaultSaveFolder: saveDir, preferencesFile: path.join(dataDir, 'backup-options.json') });
   const rooms = new Map();
@@ -42,6 +42,8 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
   const broadcast = (r, payload) => { for (const client of r.clients) client.write(`data: ${JSON.stringify(payload)}\n\n`); };
   const workshopPayload = room => ({ workshop: room.workshop, serverNow: Date.now() });
   const server = http.createServer(async (req, res) => {
+    const isLocalHost = ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && (!host || host.isLocal(req));
+    if (host && await host.handle(req, res, isLocalHost)) return;
     if (online) {
       const expected = Buffer.from(`workshop:${online.password}`).toString('base64');
       const hash = value => createHash('sha256').update(value).digest();
@@ -52,7 +54,7 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
     }
     const url = new URL(req.url, 'http://localhost');
     const json = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
-    const canManageBackups = !online && ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+    const canManageBackups = !online && isLocalHost;
     try {
       if (url.pathname === '/api/options') {
         if (req.method === 'GET') return json(200, { ...backups.snapshot(), canManageBackups });
@@ -66,9 +68,9 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
         await backups.update({ ...requested, saveFolder: requested.saveFolder ?? currentFolder });
         return json(200, { ...backups.snapshot(), canManageBackups });
       }
-      if(url.pathname==='/api/decks' && req.method==='GET')return json(200,{decks:await Promise.all(deckIds.map(readDeck)),canEdit:!online && ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)});
+      if(url.pathname==='/api/decks' && req.method==='GET')return json(200,{decks:await Promise.all(deckIds.map(readDeck)),canEdit:!online && isLocalHost});
       if(url.pathname.startsWith('/api/decks/') && req.method==='PUT'){
-        if(online || !['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress))return json(403,{error:'Edit the repository card inventories from localhost on the host computer.'});
+        if(online || !isLocalHost)return json(403,{error:'Edit the repository card inventories from localhost on the host computer.'});
         if(req.headers.origin && ![`http://${req.headers.host}`,`https://${req.headers.host}`].includes(req.headers.origin))return json(403,{error:'Origin does not match this server.'});
         const id=url.pathname.split('/')[3];if(!deckIds.includes(id))return json(404,{error:'Unknown card deck.'});
         let body='';for await(const chunk of req){body+=chunk;if(body.length>1_000_000)return json(413,{error:'Card inventory is too large.'});}
@@ -84,6 +86,7 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
       }
       if (url.pathname === '/api/config') {
         if (online) return json(200, { urls: online.publicUrl ? [online.publicUrl] : [], transport: 'poll' });
+        if (host) return json(200, { urls: host.publicUrl ? [host.publicUrl] : [], localOnly: !host.publicUrl, hostControls: isLocalHost, ...(!isLocalHost ? { transport: 'poll' } : {}) });
         const port = server.address().port;
         return json(200, { urls: Object.values(os.networkInterfaces()).flat().filter(a => a.family === 'IPv4' && !a.internal).map(a => `http://${a.address}:${port}`) });
       }

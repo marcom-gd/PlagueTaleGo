@@ -16,7 +16,7 @@ Repository: https://github.com/marcom-gd/PlagueTaleGo (private).
    git config pull.ff only
    ```
 
-4. Open that cloned folder as your project in Codex. Double-click `start-workshop.cmd` to run the workshop. There are no package dependencies to install.
+4. Open that cloned folder as your project in Codex. Double-click **Start Plague Tale GO.cmd**, then choose Local or Online on the welcome page. There are no package dependencies to install.
 
 Use `git clone` for the second PC rather than copying the folder or running `git init` again. Keep each checkout outside folders managed by OneDrive, Dropbox, or similar file-sync tools.
 
