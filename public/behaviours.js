@@ -1,4 +1,4 @@
-import {clone,uid,validateProject,descendants,assetIsActive,isState,isParameter,parameterOverlay,hasNode,nodesConnected,wallBlocks,stateEnabled} from './model.js';
+import {clone,uid,validateProject,descendants,assetIsActive,isState,isParameter,parameterOverlay,effectRotation,hasNode,nodesConnected,isClosedPatrol,wallBlocks,stateEnabled,pruneWaitProgress} from './model.js';
 import {eligibilityMode} from './behaviour-schema.js';
 import {matchesSelection,taggedObjects,nearestTaggedObject} from './object-selection.js';
 import {blockedNodes,effectOverlay,effectCanReach,placementBehaviours} from './behaviour-areas.js';
@@ -25,8 +25,8 @@ function pathTo(level,start,goal,occupied) {
   }
   return [];
 }
-function setState(project,instance,behaviour) {
-  const states=descendants(project,instance.assetId).filter(isState);
+function setState(project,instance,behaviour,assetId=instance.assetId) {
+  const states=descendants(project,assetId).filter(isState);
   // IDs select a precise state. A name/key matches the target's own hierarchy.
   let state=states.find(s=>s.id===behaviour.stateKey)||states.find(s=>s.name.toLowerCase()===behaviour.stateKey.toLowerCase());
   if(!state)return false;
@@ -40,18 +40,23 @@ function setState(project,instance,behaviour) {
   if(behaviour.stateToggle||behaviour.stateEnabled){
     let ancestor=project.assets.find(a=>a.id===state.parentId);
     const enable=s=>{
-      if(project.assets.find(a=>a.id===s.parentId)?.exclusiveStates)for(const sibling of states.filter(a=>a.parentId===s.parentId))instance.stateOverrides[sibling.id]=false;
-      instance.stateOverrides[s.id]=true;
+      if(project.assets.find(a=>a.id===s.parentId)?.exclusiveStates)for(const sibling of project.assets.filter(a=>isState(a)&&a.parentId===s.parentId))instance.stateOverrides={...instance.stateOverrides,[sibling.id]:false};
+      instance.stateOverrides={...instance.stateOverrides,[s.id]:true};
     };
-    const parents=[];while(ancestor){if(isState(ancestor))parents.unshift(ancestor);ancestor=project.assets.find(a=>a.id===ancestor.parentId);}
+    const parents=[];while(ancestor&&ancestor.id!==instance.assetId){if(isState(ancestor))parents.unshift(ancestor);ancestor=project.assets.find(a=>a.id===ancestor.parentId);}
     for(const parent of parents)enable(parent);
     enable(state);
-  }else instance.stateOverrides[state.id]=false;
+  }else instance.stateOverrides={...instance.stateOverrides,[state.id]:false};
+  pruneWaitProgress(project,instance);
   return true;
 }
 function move(project,level,instance,b,owner) {
   if(instance.locked)return 0;
-  const occupied=new Set(level.instances.filter(i=>i.id!==instance.id&&!isParameter(project.assets.find(a=>a.id===i.assetId))&&assetIsActive(project,i.assetId,i)).map(cell));
+  const occupied=new Set(level.instances.filter(i=>{
+    if(i===instance)return false;
+    const asset=project.assets.find(a=>a.id===i.assetId);
+    return !asset.nonBlocking&&!isParameter(asset)&&assetIsActive(project,i.assetId,i);
+  }).map(cell));
   for(const key of blockedNodes(project,level,instance.assetId,'movement',instance.id))occupied.add(key);
   let moved=0;
   const step=next=>{
@@ -89,7 +94,27 @@ function move(project,level,instance,b,owner) {
   if(!patrol||patrol.nodes.length<2)return 0;
   instance.patrolProgress??={};
   const initial=b.target==='patrolStart'?'start':'end',loop=b.patrolMode==='loop';
-  let destination=instance.patrolProgress[b.id]||initial;
+  const progress=Object.hasOwn(instance.patrolProgress,b.id)?instance.patrolProgress[b.id]:null;
+  if(isClosedPatrol(patrol.nodes)){
+    const nodes=patrol.nodes.slice(0,-1);
+    const entry=nodes[0];
+    let joining=progress!=='start'&&progress!=='end'&&cell(instance)!==entry;
+    let direction=(progress==='start'||progress==='end'?progress==='end':initial==='start')?1:-1;
+    for(let n=0;n<b.steps;n++){
+      const index=nodes.indexOf(cell(instance));
+      if(joining||index<0){
+        if(!step(pathTo(level,cell(instance),entry,occupied)[0]))break;
+        joining=cell(instance)!==entry;
+        continue;
+      }
+      const next=(index+direction+nodes.length)%nodes.length;
+      if(!step(nodes[next]))break;
+      if(!loop&&next===0)direction=-direction;
+    }
+    instance.patrolProgress={...instance.patrolProgress,[b.id]:joining?(direction===1?'loopStart':'loopEnd'):(direction===1?'end':'start')};
+    return moved;
+  }
+  let destination=progress||initial;
   if(!loop&&destination.startsWith('loop'))destination=destination==='loopStart'?'start':'end';
   for(let n=0;n<b.steps;n++){
     if(destination.startsWith('loop')){
@@ -109,7 +134,7 @@ function move(project,level,instance,b,owner) {
     if(index===patrol.nodes.length-1&&destination==='end')destination='start';
     if(!step(patrol.nodes[index+(destination==='end'?1:-1)]))break;
   }
-  instance.patrolProgress[b.id]=destination;
+  instance.patrolProgress={...instance.patrolProgress,[b.id]:destination};
   return moved;
 }
 
@@ -118,12 +143,30 @@ export function linkedObjects(project,level,owner){
   const ids=new Set(level.objectLinks.filter(link=>link.instanceIds.includes(owner.id)).flatMap(link=>link.instanceIds));
   return [...ids].filter(id=>id!==owner.id).map(id=>level.instances.find(i=>i.id===id)).filter(i=>i&&assetIsActive(project,i.assetId,i)&&!isParameter(project.assets.find(a=>a.id===i.assetId)));
 }
-function putInTray(level,tray,target){
+function putInTray(tray,target){
   if(tray.reduce((n,s)=>n+s.items.length,0)>=30000)throw Error('Tray exceeds the 30,000 stored objects limit. Previous state preserved.');
   const stack=tray.find(s=>s.assetId===target.assetId);
   if(stack){stack.items.push(clone(target));if(stack.count!==0)stack.count++;}
   else tray.push({id:target.id,assetId:target.assetId,count:1,items:[clone(target)]});
-  level.instances=level.instances.filter(i=>i.id!==target.id);
+}
+function transferObject(project,level,tray,instance,assetId,makeId){
+  if(assetId===instance.assetId){
+    putInTray(tray,instance);
+    level.instances=level.instances.filter(i=>i.id!==instance.id);
+    return instance;
+  }
+  const root=project.assets.find(a=>a.id===instance.assetId),asset=project.assets.find(a=>a.id===assetId);
+  const parent=project.assets.find(a=>a.id===asset.parentId),contents=new Set(descendants(project,assetId).map(a=>a.id));
+  const item={id:makeId(),assetId,x:instance.x,y:instance.y,rotation:effectRotation(project,root,parent,instance.rotation),detached:true};
+  if(instance.stateOverrides)item.stateOverrides=Object.fromEntries(Object.entries(instance.stateOverrides).filter(([id])=>contents.has(id)));
+  if(instance.removedAssetIds)item.removedAssetIds=instance.removedAssetIds.filter(id=>contents.has(id));
+  if(instance.referenceOverrides)item.referenceOverrides=instance.referenceOverrides;
+  const waitProgress=instance.waitProgress?.filter(entry=>entry.assignedId===assetId||contents.has(entry.assignedId));
+  if(waitProgress?.length)item.waitProgress=waitProgress;
+  putInTray(tray,item);
+  instance.removedAssetIds=[...(instance.removedAssetIds||[]).filter(id=>!contents.has(id)),assetId];
+  pruneWaitProgress(project,instance);
+  return item;
 }
 function pruneLinks(level){
   const ids=new Set(level.instances.map(i=>i.id));
@@ -145,23 +188,39 @@ function teleport(project,level,owner,target,destination,events){
   target.x=position.x;target.y=position.y;
   events.push({type:'moved',levelId:level.id,instanceId:target.id});return true;
 }
-function effectTargets(project,level,owner,assigned,b){
-  if(eligibilityMode(b)==='linked')return linkedObjects(project,level,owner).filter(target=>effectCanReach(project,level,owner,target)&&(!assigned.occludedByWalls||!wallBlocks(level.tiles,owner.x,owner.y,target.x,target.y)));
-  const cells=new Set(effectOverlay(project,project.assets.find(a=>a.id===owner.assetId),assigned,owner,level).cells.map(([x,y])=>`${x},${y}`));
-  return level.instances.filter(i=>i.id!==owner.id&&cells.has(cell(i))&&assetIsActive(project,i.assetId,i)&&!isParameter(project.assets.find(a=>a.id===i.assetId))&&matchesSelection(project,i,eligibilityMode(b)==='any'?null:b.eligibleAssetIds,eligibilityMode(b)==='tags'?b.eligibleTagIds:undefined));
+const placedTarget=instance=>({instance,assetId:instance.assetId});
+function nestedTargets(project,instance,assetIds){
+  return descendants(project,instance.assetId).filter(a=>assetIds.has(a.id)&&!isState(a)&&!isParameter(a)&&assetIsActive(project,a.id,instance)).map(a=>({instance,assetId:a.id}));
 }
-function applyEffectTo(project,level,owner,b,targets,inventory,graveyard,events){
+function effectTargets(project,level,owner,assigned,b){
+  const mode=eligibilityMode(b);
+  if(mode==='linked')return linkedObjects(project,level,owner).filter(target=>effectCanReach(project,level,owner,target)&&(!assigned.occludedByWalls||!wallBlocks(level.tiles,owner.x,owner.y,target.x,target.y))).map(placedTarget);
+  const cells=new Set(effectOverlay(project,project.assets.find(a=>a.id===owner.assetId),assigned,owner,level).cells.map(([x,y])=>`${x},${y}`));
+  const selectedIds=mode==='selected'&&['switchState','graveyard','inventory','flush'].includes(b.action)?b.eligibleAssetIds:null;
+  const nestedIds=new Set(selectedIds?project.assets.filter(a=>a.parentId&&selectedIds.includes(a.id)).map(a=>a.id):[]);
+  return level.instances.flatMap(i=>{
+    if(!cells.has(cell(i))||!assetIsActive(project,i.assetId,i))return [];
+    const placed=i.id!==owner.id&&!isParameter(project.assets.find(a=>a.id===i.assetId))&&matchesSelection(project,i,mode==='any'?null:b.eligibleAssetIds,mode==='tags'?b.eligibleTagIds:undefined);
+    return [...(placed?[placedTarget(i)]:[]),...(nestedIds.size?nestedTargets(project,i,nestedIds):[])];
+  });
+}
+function applyEffectTo(project,level,owner,b,targets,inventory,graveyard,events,makeId){
   let eligible=[...targets];
   if(b.action==='flush'){
-    const types=new Set(eligible.map(i=>i.assetId)),blocked=blockedNodes(project,level,owner.assetId,'effects',owner.id);
-    const candidates=level.instances.filter(i=>i.id!==owner.id&&types.has(i.assetId)&&assetIsActive(project,i.assetId,i)&&!blocked.has(cell(i)));
-    const visited=new Set(eligible.map(i=>i.id)),groups=new Map(),queue=[],reached=new Map(),reach=b.flushReach??Infinity;
+    const types=new Set(eligible.map(t=>t.assetId)),blocked=blockedNodes(project,level,owner.assetId,'effects',owner.id);
+    const nestedIds=new Set(b.type==='applyEffect'&&eligibilityMode(b)==='selected'?b.eligibleAssetIds?.filter(id=>types.has(id)):[]);
+    const candidates=level.instances.flatMap(i=>{
+      if(blocked.has(cell(i))||!assetIsActive(project,i.assetId,i))return [];
+      return [...(i.id!==owner.id&&types.has(i.assetId)?[placedTarget(i)]:[]),...(nestedIds.size?nestedTargets(project,i,nestedIds):[])];
+    });
+    const targetKey=t=>JSON.stringify([t.instance.id,t.assetId]);
+    const visited=new Set(eligible.map(targetKey)),groups=new Map(),queue=[],reached=new Map(),reach=b.flushReach??Infinity;
     const key=(assetId,position)=>JSON.stringify([assetId,position]);
-    for(const target of candidates){const id=key(target.assetId,cell(target));if(!groups.has(id))groups.set(id,[]);groups.get(id).push(target);}
-    for(const seed of eligible){const id=key(seed.assetId,cell(seed));if(!reached.has(id)){reached.set(id,1);queue.push({assetId:seed.assetId,position:cell(seed),depth:1});}}
+    for(const target of candidates){const id=key(target.assetId,cell(target.instance));if(!groups.has(id))groups.set(id,[]);groups.get(id).push(target);}
+    for(const seed of eligible){const position=cell(seed.instance),id=key(seed.assetId,position);if(!reached.has(id)){reached.set(id,1);queue.push({assetId:seed.assetId,position,depth:1});}}
     for(let n=0;n<queue.length;n++){
       const source=queue[n];
-      for(const target of groups.get(key(source.assetId,source.position))||[])if(!visited.has(target.id)){visited.add(target.id);eligible.push(target);}
+      for(const target of groups.get(key(source.assetId,source.position))||[])if(!visited.has(targetKey(target))){visited.add(targetKey(target));eligible.push(target);}
       if(source.depth>=reach)continue;
       for(const position of neighbours(source.position)){
         const id=key(source.assetId,position);if(reached.has(id)||!groups.has(id))continue;
@@ -170,19 +229,19 @@ function applyEffectTo(project,level,owner,b,targets,inventory,graveyard,events)
     }
     // Preserved cells still propagate the flush. Distance is measured from the
     // nearest initial catch, with stacks sharing one cell and one distance.
-    eligible=eligible.filter(target=>(reached.get(key(target.assetId,cell(target)))??1)>(b.flushPreserve??0));
+    eligible=eligible.filter(target=>(reached.get(key(target.assetId,cell(target.instance)))??1)>(b.flushPreserve??0));
   }
   let count=0;
-  for(const target of eligible){
-    if(!level.instances.some(i=>i.id===target.id))continue;
-    if(b.action==='switchState'){if(setState(project,target,b))count++;}
+  for(const {instance:target,assetId} of eligible){
+    if(!level.instances.includes(target)||(assetId!==target.assetId&&!assetIsActive(project,assetId,target)))continue;
+    if(b.action==='switchState'){if(setState(project,target,b,assetId))count++;}
     if(b.action==='setMoveTarget'){
       target.moveTarget=b.moveTarget.type==='self'?{type:'object',id:owner.id}:clone(b.moveTarget);
       if(b.moveTarget.type==='object')target.moveTarget.id=resolveReference(level,owner,b.moveTarget.id);count++;
     }
     if(['graveyard','flush','inventory'].includes(b.action)){
-      putInTray(level,b.action==='inventory'?inventory:graveyard,target);count++;
-      if(b.action==='inventory')events.push({type:'inventoryAdded',levelId:level.id,instanceId:target.id,instance:clone(target)});
+      const item=transferObject(project,level,b.action==='inventory'?inventory:graveyard,target,assetId,makeId);count++;
+      if(b.action==='inventory')events.push({type:'inventoryAdded',levelId:level.id,instanceId:item.id,instance:clone(item)});
     }
     if(b.action==='teleport'&&teleport(project,level,owner,target,b.destination,events))count++;
   }
@@ -211,25 +270,46 @@ function teleportTargets(project,level,owner,b){
 }
 const logEntry=(project,owner,b,count)=>({instanceId:owner.id,assetName:project.assets.find(a=>a.id===owner.assetId).name,type:b.type,...((b.trigger?.action||b.action)?{action:b.trigger?.action||b.action}:{}),...(b.trigger?{triggerType:b.trigger.type}:{}),count});
 
+function waitTurn(instance,assignedId,b){
+  instance.waitProgress??=[];
+  let progress=instance.waitProgress.find(entry=>entry.assignedId===assignedId&&entry.behaviourId===b.id);
+  if(!progress){
+    progress={assignedId,behaviourId:b.id,remaining:b.turns};
+    instance.waitProgress.push(progress);
+  }
+  if(progress.remaining===0)return false;
+  progress.remaining--;
+  return true;
+}
+
 // A fixed queue keeps new copies from acting until the following turn. Passive
 // blockers and clickable Use actions are evaluated from the current state.
 export function resolveTurn(input,inventory=[],graveyard=[],makeId=uid){
   const project=clone(validateProject(input)),nextInventory=clone(inventory),nextGraveyard=clone(graveyard),log=[],events=[];
-  const ranks=new Map(orderedBehaviours(project).map(({behaviour},n)=>[behaviour.id,n])),queue=[];
-  for(const level of project.levels)for(const instance of level.instances)for(const assigned of [project.assets.find(a=>a.id===instance.assetId),...descendants(project,instance.assetId)]){
-    for(const b of assigned.behaviours||[])if(!['useEffect','advanceOnEvent'].includes(b.type))queue.push({levelId:level.id,instanceId:instance.id,assignedId:assigned.id,b});
+  const ranks=new Map(orderedBehaviours(project).map(({behaviour},n)=>[behaviour.id,n])),queue=[],waiting=new Set();
+  for(const level of project.levels)for(const instance of level.instances){
+    pruneWaitProgress(project,instance);
+    for(const assigned of [project.assets.find(a=>a.id===instance.assetId),...descendants(project,instance.assetId)]){
+      for(const b of assigned.behaviours||[])if(!['useEffect','advanceOnEvent'].includes(b.type))queue.push({levelId:level.id,instanceId:instance.id,assignedId:assigned.id,b});
+    }
   }
   queue.sort((a,b)=>(ranks.get(a.b.id)??Infinity)-(ranks.get(b.b.id)??Infinity));
   for(const entry of queue){
     const {b}=entry,level=project.levels.find(l=>l.id===entry.levelId),owner=level.instances.find(i=>i.id===entry.instanceId);
     if(!b.enabled||!owner||!assetIsActive(project,entry.assignedId,owner))continue;
+    if(waiting.has(owner.id)&&b.type!=='blockNode')continue;
     const root=project.assets.find(a=>a.id===owner.assetId),assigned=project.assets.find(a=>a.id===entry.assignedId);let count=0;
+    if(b.type==='wait'&&waitTurn(owner,assigned.id,b)){waiting.add(owner.id);count=1;}
     if(b.type==='moveTo'||b.type==='moveAway')count=move(project,level,owner,b,root);
     if(b.type==='blockNode')count=parameterOverlay(project,root,assigned,owner,level).cells.filter(([x,y])=>hasNode(level,`${x},${y}`)).length;
     if(b.type==='expand')count=expand(project,level,owner,assigned,b,makeId);
     if(b.type==='spawn')count=spawn(project,level,owner,b,makeId);
-    if(b.type==='addToTray'){putInTray(level,b.tray==='inventory'?nextInventory:nextGraveyard,owner);pruneLinks(level);count=1;}
-    if(b.type==='applyEffect')count=applyEffectTo(project,level,owner,b,effectTargets(project,level,owner,assigned,b),nextInventory,nextGraveyard,events);
+    if(b.type==='addToTray'){
+      let target=assigned;
+      while(target!==root&&(isState(target)||isParameter(target)))target=project.assets.find(a=>a.id===target.parentId);
+      transferObject(project,level,b.tray==='inventory'?nextInventory:nextGraveyard,owner,target.id,makeId);pruneLinks(level);count=1;
+    }
+    if(b.type==='applyEffect')count=applyEffectTo(project,level,owner,b,effectTargets(project,level,owner,assigned,b),nextInventory,nextGraveyard,events,makeId);
     if(b.type==='teleport'){
       for(const target of teleportTargets(project,level,owner,b))if(effectCanReach(project,level,owner,target)&&teleport(project,level,owner,target,b.destination,events))count++;
     }
@@ -258,7 +338,7 @@ export function useObject(input,inventory,graveyard,choice){
   events.push({type:'use',levelId:level.id,instanceId:owner.id},{type:'use',levelId:level.id,instanceId:used.id});
   const trigger=b.trigger||b;let count=0;
   if(trigger.enabled!==false){
-    if(['applyEffect','useEffect'].includes(trigger.type))count=applyEffectTo(project,level,owner,trigger,targets,nextInventory,nextGraveyard,events);
+    if(['applyEffect','useEffect'].includes(trigger.type))count=applyEffectTo(project,level,owner,trigger,targets.map(placedTarget),nextInventory,nextGraveyard,events,uid);
     else for(const target of targets){
       if(!level.instances.some(i=>i.id===target.id))continue;
       if(['moveTo','moveAway'].includes(trigger.type)){
@@ -269,7 +349,7 @@ export function useObject(input,inventory,graveyard,choice){
       if(trigger.type==='expand')count+=expand(project,level,target,project.assets.find(a=>a.id===use.assignedId),trigger,uid);
       if(trigger.type==='spawn')count+=spawn(project,level,target,trigger,uid);
       if(trigger.type==='addToTray'){
-        putInTray(level,trigger.tray==='inventory'?nextInventory:nextGraveyard,target);pruneLinks(level);count++;
+        transferObject(project,level,trigger.tray==='inventory'?nextInventory:nextGraveyard,target,target.assetId,uid);pruneLinks(level);count++;
         if(trigger.tray==='inventory')events.push({type:'inventoryAdded',levelId:level.id,instanceId:target.id,instance:clone(target)});
       }
     }

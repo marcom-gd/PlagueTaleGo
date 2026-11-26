@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newProject,applyAction,validateProject,stateEnabled} from '../public/model.js';
+import {newProject,applyAction,validateProject,assetIsActive,stateEnabled} from '../public/model.js';
 import {resolveTurn,orderedBehaviours} from '../public/behaviours.js';
+import {releaseItem} from '../public/player-inventory.js';
 import {createSequence,nextTurn,previousTurn,validateSequence} from '../public/turn-sequence.js';
 import {copyHierarchy,copyLevel} from '../public/editing.js';
 const asset=(id,icon='guard',extra={})=>({id,name:id,icon,kind:'token',rule:'',tags:[],range:1,color:'#b8cf96',parentId:null,...extra});
@@ -40,6 +41,51 @@ test('movement respects connections and occupancy, approaches tracked objects, a
   l.instances[1].locked=true;assert.equal(resolveTurn(p).project.levels[0].instances[1].x,2);
 });
 
+test('non-blocking token definitions let automated movers share a node while stacks and blockers still apply',()=>{
+  let {p,l}=fixture();
+  p.assets[2].behaviours=[];
+  p.assets[0].behaviours=[move('walk',{steps:4})];
+  l.instances[0].x=4;l.instances[1].moveTarget={type:'object',id:'s'};
+  assert.equal(resolveTurn(p).project.levels[0].instances[1].x,3);
+  p=applyAction(p,{type:'asset.update',data:{id:'source',nonBlocking:true}});
+  p=validateProject(JSON.parse(JSON.stringify(p)));l=p.levels[0];
+  assert.equal(resolveTurn(p).project.levels[0].instances[1].x,4);
+  l.instances[1].moveTarget={type:'position',x:6,y:2};
+  assert.equal(resolveTurn(p).project.levels[0].instances[1].x,6);
+  l.instances.push(placed('solid','guard',4));
+  assert.equal(resolveTurn(p).project.levels[0].instances.find(i=>i.id==='g').x,2);
+  l.instances.pop();
+  p.assets[2].icon='self';
+  p.assets[2].behaviours=[{id:'barrier',type:'blockNode',enabled:true,blockAssetIds:['guard'],blockScope:'movement'}];
+  assert.equal(resolveTurn(p).project.levels[0].instances[1].x,2);
+  assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'source',nonBlocking:'true'}}),/free node/i);
+});
+
+test('Wait delays later behaviours per placement and preserves its countdown in turn history',()=>{
+  const {p,l}=fixture();
+  const wait={id:'wait',type:'wait',enabled:true,turns:2};
+  p.assets.push(asset('paused','guard',{kind:'state',parentId:'guard',enabled:true,behaviours:[wait]}));
+  p.assets[0].behaviours=[move('walk')];
+  p.behaviourOrder=['wait','walk'];
+  l.instances[1].moveTarget={type:'position',x:8,y:2};
+  l.instances.push({...placed('other','guard',4,3),moveTarget:{type:'position',x:8,y:3},stateOverrides:{paused:false}});
+  l.nodes.push('4,3','5,3','6,3','7,3','8,3');
+  let state={project:p,inventory:[],graveyard:[],levelId:l.id},sequence=createSequence(state);
+  for(const [x,otherX] of [[2,5],[2,6],[3,7],[4,8]]){
+    sequence=validateSequence(JSON.parse(JSON.stringify(nextTurn(sequence,state))));
+    state=sequence.frames[sequence.cursor];
+    assert.deepEqual(state.project.levels[0].instances.slice(1).map(i=>i.x),[x,otherX]);
+  }
+  const past=previousTurn(sequence,state);
+  assert.deepEqual(nextTurn(past,past.frames[past.cursor]).frames[sequence.cursor],state);
+  const toggle=enabled=>({type:'instance.state',data:{levelId:l.id,id:'g',stateId:'paused',enabled}});
+  let changed=applyAction(applyAction(state.project,toggle(false)),toggle(true));
+  assert.equal(resolveTurn(changed).project.levels[0].instances[1].x,4);
+  changed.behaviourOrder=['walk','wait'];
+  assert.equal(resolveTurn(changed).project.levels[0].instances[1].x,5);
+  for(const turns of [0,1.5,101,'2'])assert.throws(()=>applyAction(p,{type:'asset.update',data:{id:'paused',behaviours:[{...wait,turns}]}}),/Wait needs/);
+});
+
 test('patrols bounce along the saved route between start and end and preserve progress',()=>{
   const {p,l}=fixture();l.instances=[placed('g','guard',0)];p.assets[0].behaviours=[move('patrol',{target:'patrolStart',steps:2,patrolId:'route'})];
   l.patrols=[{id:'route',name:'Route',color:'#abcdef',hidden:false,nodes:['0,2','1,2','2,2','3,2']}];
@@ -56,6 +102,63 @@ test('Apply Effect uses visible geometry and selection, sets targets, and gravey
   run=resolveTurn(p);assert.equal(run.project.levels[0].instances.length,1);assert.equal(run.project.levels[0].objectLinks.length,0);assert.equal(run.graveyard[0].items[0].id,'g');
   p.assets[2].occludedByWalls=true;l.tiles={'2,2':'wall'};l.nodes=l.nodes.filter(key=>key!=='2,2');assert.equal(resolveTurn(p).graveyard.length,0);
   l.tiles={};p.assets[2].behaviours[0].eligibleAssetIds=[];assert.equal(resolveTurn(p).graveyard.length,0);
+});
+
+test('selected nested objects transfer at the carrier’s cell, preserving each carrier and detached state',()=>{
+  for(const [action,tray] of [['graveyard','graveyard'],['inventory','inventory'],['flush','graveyard']]){
+    const {p,l}=fixture();
+    p.assets.push(asset('carrying','guard',{kind:'state',parentId:'guard',enabled:true}),
+      asset('lantern','lantern',{parentId:'carrying'}),
+      asset('lit','lantern',{kind:'state',parentId:'lantern',enabled:true}),
+      asset('glow','area',{parentId:'lantern',behaviours:[{id:'block',type:'blockNode',enabled:true,blockAssetIds:[],blockScope:'movement'}]}));
+    l.instances[1].stateOverrides={lit:false};
+    l.instances.push(placed('inactive','guard',2),placed('other','guard',3),placed('standalone','lantern',1));
+    l.instances[2].stateOverrides={carrying:false};
+    l.objectLinks=[{id:'link',name:'Link',rule:'',color:'#abcdef',instanceIds:['s','g']}];
+    p.assets[2].behaviours=[apply('remove',action,{eligibleAssetIds:['lantern'],flushReach:1})];
+    p.behaviourOrder=['remove','block'];
+    const state={project:p,inventory:[],graveyard:[],levelId:l.id};
+    const seq=nextTurn(createSequence(state),state,()=> 'detached-lantern');
+    const run=validateSequence(JSON.parse(JSON.stringify(seq))).frames[1],level=run.project.levels[0];
+    assert.deepEqual(level.instances.map(i=>i.id),['s','g','inactive','other']);
+    assert.deepEqual(level.objectLinks,l.objectLinks);
+    const guard=level.instances[1],lantern=run[tray][0].items.find(i=>i.id==='detached-lantern');
+    assert.equal(run[tray][0].count,2);
+    assert.deepEqual(lantern.stateOverrides,{lit:false});
+    assert.equal(assetIsActive(run.project,'glow',guard),false);
+    assert.equal(assetIsActive(run.project,'glow',level.instances[3]),true);
+    assert.equal(run.log.some(e=>e.instanceId==='g'&&e.type==='blockNode'),false);
+    assert.equal(resolveTurn(run.project,run.inventory,run.graveyard)[tray][0].count,2);
+    const restored=releaseItem(run.project,run[tray],l.id,run[tray][0].id,{x:4,y:2});
+    const dropped=restored.project.levels[0].instances.find(i=>i.id===restored.instanceId);
+    assert.equal(dropped.id,'detached-lantern');
+    const parentOff=applyAction(restored.project,{type:'asset.update',data:{id:'carrying',enabled:false}});
+    assert.equal(assetIsActive(parentOff,'lantern',dropped),true);
+    assert.equal(assetIsActive(parentOff,'lit',dropped),false);
+    assert.equal(assetIsActive(parentOff,'lantern',guard),false);
+  }
+});
+
+test('tray behaviour assigned inside a nested object transfers that object only',()=>{
+  const {p}=fixture();
+  p.assets.push(asset('lantern','lantern',{parentId:'guard'}),asset('broken','lantern',{
+    kind:'state',parentId:'lantern',enabled:true,behaviours:[{id:'bury',type:'addToTray',enabled:true,tray:'graveyard'}]
+  }));
+  const run=resolveTurn(p,[],[],()=> 'detached-lantern');
+  assert.deepEqual(run.project.levels[0].instances.map(i=>i.id),['s','g']);
+  assert.equal(run.graveyard[0].items[0].assetId,'lantern');
+  assert.deepEqual(run.project.levels[0].instances[1].removedAssetIds,['lantern']);
+});
+
+test('Switch State can target the named state of a nested object sharing the caster’s cell',()=>{
+  const {p,l}=fixture();
+  p.assets.push(asset('lantern','lantern',{parentId:'source'}),
+    asset('lantern-off','lantern',{kind:'state',parentId:'lantern',name:'Off',enabled:false}),
+    asset('source-off','torch',{kind:'state',parentId:'source',name:'Off',enabled:false}));
+  p.assets[2].behaviours=[apply('extinguish','switchState',{eligibleAssetIds:['lantern'],stateKey:'Off',stateEnabled:true})];
+  const run=resolveTurn(p),source=run.project.levels[0].instances[0];
+  assert.deepEqual(source.stateOverrides,{'lantern-off':true});
+  assert.equal(l.instances[0].stateOverrides,undefined);
 });
 
 test('Flush propagates outside the effect only through touching active instances of the same selected type',()=>{

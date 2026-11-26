@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newProject,applyAction,validateProject} from '../public/model.js';
+import {newProject,applyAction,validateProject,appendPatrolNode} from '../public/model.js';
 import {copyLevel} from '../public/editing.js';
 const setup=()=>{let p=newProject();const levelId=p.levels[0].id;p=applyAction(p,{type:'tile.paint',data:{levelId,cells:['2,2','3,2','4,2'],tile:'node'}});return {p,levelId};};
 test('patrols overlap, reverse independently, persist and copy with unique IDs',()=>{
@@ -22,6 +22,22 @@ test('legacy maps migrate without mutation and invalid patrol data is rejected',
   assert.deepEqual(validateProject(p).levels[0].patrols,[]);assert.equal(p.levels[0].patrols,undefined);
   const patrol={id:'p',name:'Patrol',color:'#123456',nodes:['2,2'],hidden:false};
   for(const changes of [{nodes:['0,0']},{nodes:['2,2','2,2']},{color:'red'},{hidden:1},{id:levelId}])assert.throws(()=>applyAction(p,{type:'patrol.add',data:{levelId,patrol:{...patrol,...changes}}}));
+});
+test('painting can close a patrol on its start and save the ordered closing step',()=>{
+  let {p,levelId}=setup();
+  p=applyAction(p,{type:'tile.paint',data:{levelId,cells:['4,3','3,3','2,3'],tile:'node'}});
+  const level=p.levels[0],route=['2,2','3,2','4,2','4,3','3,3','2,3'];
+  assert.equal(appendPatrolNode(level,route.slice(0,3),'2,2').length,3);
+  assert.equal(appendPatrolNode(level,route,'3,2'),route);
+  const nodes=[...route,'2,2'].reduce((nodes,key)=>appendPatrolNode(level,nodes,key),[]);
+  assert.deepEqual(nodes,[...route,'2,2']);
+  const patrol={id:'closed',name:'Closed',color:'#123456',nodes:route,hidden:false};
+  p=applyAction(p,{type:'patrol.add',data:{levelId,patrol}});
+  p=applyAction(p,{type:'patrol.update',data:{levelId,id:patrol.id,nodes}});
+  assert.deepEqual(copyLevel(validateProject(JSON.parse(JSON.stringify(p))).levels[0]).patrols[0].nodes,nodes);
+  assert.throws(()=>applyAction(p,{type:'patrol.update',data:{levelId,id:patrol.id,nodes:[...nodes,'3,2']}}));
+  p=applyAction(p,{type:'tile.paint',data:{levelId,cells:['2,2'],tile:'wall'}});
+  assert.deepEqual(p.levels[0].patrols[0].nodes,route.slice(1));
 });
 test('color dots apply to individual instances, survive copies and movement, and can be removed',()=>{
   let {p,levelId}=setup();p.assets.push({id:'guard',name:'Guard',icon:'guard',rule:'',tags:[],color:'#123456',range:1,parentId:null});

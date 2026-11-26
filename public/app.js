@@ -18,7 +18,7 @@ import { createSequence, captureSequence, nextTurn, previousTurn, validateSequen
 import { availableUses, useObject, eventsAdvanceTurn, movementEvents } from './behaviours.js';
 import { checkMovement, effectOverlay } from './behaviour-areas.js';
 import { startingInventoryEditor } from './starting-inventory-editor.js';
-import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles } from './model.js';
+import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles, isClosedPatrol, appendPatrolNode } from './model.js';
 const $ = s => document.querySelector(s);
 let uiTextScale = 100;
 try { uiTextScale = textScale(localStorage.getItem('workshop-text-scale') ?? 100); } catch {}
@@ -272,7 +272,7 @@ function render() {
   $('#canvas-hint').innerHTML = play ? 'Drag pieces to play. Piece changes are temporary.<br><b>Post-its and card draws stay shared and saved.</b>' : staged ? `Placing ${esc(asset(staged)?.name || 'token')}.<br><b>Click a cell to place. Esc to finish.</b>` : l.instances.length ? 'Every piece is a possibility.<br><b>Select a token to inspect its parameters.</b>' : 'An empty stage for your ideas.<br><b>Start with a token, or shape the ground.</b>';
   if (!play && ['connect','unlink'].includes(tool)) $('#canvas-hint').innerHTML = `${tool==='unlink'?'Erase a connection':'Reconnect nodes'}.<br><b>${connectionStart?'Now select an adjacent node.':'Click a line, or select two adjacent nodes.'}</b>`;
   if(!play&&!staged&&tool==='floor')$('#canvas-hint').innerHTML=`${floorVariants.find(v=>v.tile===floorTile).label} floor.<br><b>Click or drag cells to paint. F opens floor types.</b>`;
-  if(!play&&tool==='patrol')$('#canvas-hint').innerHTML='Patrol path: select or create a patrol.<br><b>Click or drag across existing nodes in order. Swap S / E to reverse.</b>';
+  if(!play&&tool==='patrol')$('#canvas-hint').innerHTML='Select or create a patrol, then paint existing nodes in order.<br><b>Return to S from a connected node to close the patrol.</b>';
   if(tool==='link')$('#canvas-hint').innerHTML='Click objects to include them in a link.<br><b>Choose two or more, then Create link. Esc to cancel.</b>';
   let builder=$('#link-builder');
   if(!builder){builder=document.createElement('div');builder.id='link-builder';builder.className='link-builder';$('#canvas-wrap').append(builder);}
@@ -303,10 +303,11 @@ function patrolArtwork(l) {
   if(!showPatrols)return '';
   const patrols=(l.patrols||[]).filter(p=>!p.hidden).sort((a,b)=>Number(a.id===patrolId)-Number(b.id===patrolId));
   return `<svg class="patrol-artwork" viewBox="0 0 ${l.width} ${l.height}" preserveAspectRatio="none" aria-hidden="true">${patrols.map(p=>{
-    const nodes=paint?.tile==='patrol'&&p.id===patrolId?[...new Set([...p.nodes,...paint.cells])]:p.nodes;
+    const nodes=paint?.tile==='patrol'&&p.id===paint.patrolId?paint.nodes:p.nodes;
     const points=nodes.map(key=>key.split(',').map(Number).map(n=>n+.5));
     const focused=p.id===patrolId;
-    return `<g style="color:${p.color}" opacity="${activePatrol()&&!focused ? .45 : 1}"><polyline points="${points.map(v=>v.join(',')).join(' ')}"/><g>${points.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="${focused ? .16 : .12}"/>`).join('')}</g>${points.length?[[points[0],'S'],[points.at(-1),'E']].map(([[x,y],label])=>`<text x="${x+(points.length===1?(label==='S'?-.2:.2):0)}" y="${y-.23}">${label}</text>`).join(''):''}</g>`;
+    const labels=isClosedPatrol(nodes)||points.length===1?[[points[0],'S/E']]:[[points[0],'S'],[points.at(-1),'E']];
+    return `<g style="color:${p.color}" opacity="${activePatrol()&&!focused ? .45 : 1}"><polyline points="${points.map(v=>v.join(',')).join(' ')}"/><g>${points.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="${focused ? .16 : .12}"/>`).join('')}</g>${points.length?labels.map(([[x,y],label])=>`<text x="${x}" y="${y-.23}">${label}</text>`).join(''):''}</g>`;
   }).join('')}</svg>`;
 }
 function renderInventory(isGraveyard=false) {
@@ -641,7 +642,7 @@ function promptToSave(editor,discard) {
 const hasUnsavedEditors=()=>!!dialogEditor?.dirty()||dialogParents.some(parent=>parent.editor?.dirty());
 $('#dialog').addEventListener('cancel',e=>{e.preventDefault();requestCloseDialog();});
 function modal(title,body,footer='',eyebrow='THE WORKBENCH') { return `<div class="modal"><div class="eyebrow">${eyebrow}</div><div class="modal-head"><h2>${esc(title)}</h2><button data-close aria-label="Close dialog">×</button></div>${body}${footer?`<div class="modal-footer">${footer}</div>`:''}</div>`; }
-const behaviourTools=behaviourEditor({getProject:currentProject,getLevel:level,isPlay:()=>!!play,dispatch,showDialog,modal,closeDialog,watchEditor,esc,toast});
+const behaviourTools=behaviourEditor({getProject:currentProject,getLevel:level,isPlay:()=>!!play,dispatch,showDialog,modal,closeDialog,watchEditor,esc,toast,assetPath});
 function createAtomic(kind){
   if(play)return;
   if(kind==='behaviours')behaviourTools.block();
@@ -709,6 +710,8 @@ function tokenDialog(existing, kind='token', parentId=null, onSaved=null, initia
   const editorLabel=()=>isState(draft)?'state':isParameter(draft)?'parameter':'token';
   const forbidden=new Set([draft.id,...descendants(project,draft.id).map(a=>a.id)]);
   showDialog(modal(`${existing?'Edit':'Create'} a ${editorLabel()}`,`<form id="token-form"><div class="field"><label for="token-name">Name <span class="muted">· required</span></label><input id="token-name" maxlength="80" required placeholder="A torch, a rule, a possibility…" value="${esc(draft.name)}" autofocus></div>${(isState(draft)?[false]:[false,true]).map(parameter=>`<div class="field-label">${parameter?'Parameters · visual behavior':'Token icons'}</div><div class="icon-picker ${parameter?'parameter-picker':''}">${Object.entries(iconNames).filter(([id])=>parameterIcons.includes(id)===parameter).map(([id,name])=>`<button type="button" data-icon="${id}" class="${draft.icon===id?'active':''}" title="${name}" aria-label="${name}" aria-pressed="${draft.icon===id}">${sprite(id,draft.color)}${parameter?`<span>${name}</span>`:''}</button>`).join('')}</div>`).join('')}<div class="field-label">Icon variant</div><div id="variant-picker" class="variant-picker"></div><div class="field"><label for="token-parent">Nest inside</label><select id="token-parent" ${isState(draft)?'required':''}>${!isState(draft)?'<option value="">Standalone</option>':''}${project.assets.filter(a=>!forbidden.has(a.id)&&(!isState(draft)||!isParameter(a))).map(a=>`<option value="${esc(a.id)}" ${draft.parentId===a.id?'selected':''}>${esc(assetPath(a))}${isState(a)?' (state)':''}</option>`).join('')}</select></div>${isState(draft)?`<label class="check-row"><input id="state-enabled" type="checkbox" ${draft.enabled?'checked':''}> Enabled · show this state’s contents</label>`:''}<div class="field"><label for="token-rule">Rule / description</label><textarea id="token-rule" maxlength="4000" placeholder="What does it do? What can change? The rules are yours to define.">${esc(draft.rule)}</textarea></div><div class="field tag-field"><label for="token-tags">Tags <span class="muted">· reusable definitions</span></label><div id="token-tag-list" class="tags"></div><input id="token-tags" maxlength="60" placeholder="Search tags or create a new one…" autocomplete="off"><div id="tag-options" class="tag-options"></div><div id="inline-tag-editor" hidden></div></div><div class="field"><label>Parameter color</label><div class="color-picker">${['#b8cf96','#edc47c','#d8967f','#8fb8c2','#b2a1c6','#ddddbd'].map(c=>`<button type="button" data-color="${c}" class="${draft.color===c?'active':''}" style="--swatch:${c}" aria-label="Color ${c}"></button>`).join('')}<input id="custom-color" type="color" value="${draft.color}" aria-label="Custom parameter color"></div></div><p id="self-help" ${draft.icon==='self'?'':'hidden'}>Self affects only the token’s occupied cell. Use it to detect stacked objects or apply behaviours to overlaps. Range, direction and wall occlusion do not change its area.</p><div class="field" id="range-field" ${isParameter(draft)&&draft.icon!=='self'?'':'hidden'}><label id="range-name" for="token-range">${draft.icon==='area'?'Radius':draft.icon==='cross'?'Arm length':'Length'} in grid cells</label><div class="range-control"><input type="range" id="token-range" min="1" max="12" value="${draft.range}"><output id="range-value">${draft.range} cells</output></div><small id="range-help">Effect area for overlays and assigned behaviours. Areas use diamond-shaped grid distance; crosses include the origin and extend equally along all four grid axes. Line, cone and rectangle extend forward, excluding the origin. Cones stay centered and use odd widths; saved even cone widths round down. Even rectangle widths include one extra cell on the right. Enable Occluded by Walls to stop the effect at wall tiles.</small></div><div id="parameter-behavior" ${isParameter(draft)?'':'hidden'}><label class="check-row"><input id="token-follow-facing" type="checkbox" ${draft.followTokenFacing?'checked':''}> Follow Token Facing</label><small>Turn this parameter with the parent token’s facing triangle. Its own rotation remains a relative offset.</small><label class="check-row"><input id="token-occlusion" type="checkbox" ${draft.occludedByWalls?'checked':''}> Occluded by Walls</label><small>Wall tiles and cells behind them are hidden. Walls also block diagonal corners.</small><label class="check-row"><input id="token-overlap-enabled" type="checkbox" ${draft.overlapThreshold>0?'checked':''}> Change color when objects overlap</label><div id="overlap-options" ${draft.overlapThreshold>0?'':'hidden'}><div class="field"><label for="token-overlap-mode">Objects that trigger the color</label><select id="token-overlap-mode"><option value="any" ${draft.overlapAssetIds==null&&draft.overlapTagIds==null?'selected':''}>Any object</option><option value="selected" ${draft.overlapAssetIds!=null&&draft.overlapTagIds==null?'selected':''}>Selected objects</option><option value="tags" ${draft.overlapTagIds!=null?'selected':''}>Objects with tags</option></select></div><fieldset id="overlap-objects" ${draft.overlapAssetIds==null?'hidden':''}><legend>Choose library objects</legend>${project.assets.filter(a=>!isState(a)&&!isParameter(a)).map(a=>`<label class="check-row"><input type="checkbox" name="overlap-object" value="${esc(a.id)}" ${draft.overlapAssetIds?.includes(a.id)?'checked':''}> ${esc(assetPath(a))}</label>`).join('')||'<small>Create an object in the library first.</small>'}</fieldset><fieldset id="overlap-tags" ${draft.overlapTagIds==null?'hidden':''}><legend>Match any selected tag</legend>${project.tags.map(t=>`<label class="check-row"><input type="checkbox" name="overlap-tag" value="${esc(t.id)}" ${draft.overlapTagIds?.includes(t.id)?'checked':''}> ${esc(t.name)}</label>`).join('')}</fieldset><div class="field-row"><div class="field"><label for="token-overlap-count">At least X objects</label><input id="token-overlap-count" type="number" min="1" max="1000" value="${draft.overlapThreshold||1}"></div><div class="field"><label for="token-overlap-color">Overlap color</label><input id="token-overlap-color" type="color" value="${draft.overlapColor||'#edc47c'}"></div></div><small>Counts placements of the chosen library objects inside the visible effect, including stacked objects. Select none to disable matching. Excludes the owner and other parameter markers. The whole effect changes color.</small></div></div><div class="field" id="width-field" ${['cone','rectangle'].includes(draft.icon)?'':'hidden'}><label for="token-width">Width in cells (cone: far edge)</label><input id="token-width" type="number" min="1" max="${draft.icon==='cone'?11:12}" step="${draft.icon==='cone'?2:1}" value="${draft.icon==='cone'?2*Math.floor(((draft.width??3)-1)/2)+1:(draft.width??3)}"></div><div id="token-auto-facing-field" ${!isParameter(draft)&&!isState(draft)?'':'hidden'}><label class="check-row"><input id="token-auto-facing" type="checkbox" ${draft.autoFacing?'checked':''}> Auto-facing</label><small>Face the direction moved, including in playtest. Diagonal moves use the longer axis; equal diagonals face horizontally.</small></div><div class="field"><label for="token-direction">Direction (optional)</label><select id="token-direction">${[['','None'],[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.direction??'')===v?'selected':''}>${n}</option>`).join('')}</select><small>Facing is shown by an edge triangle. Rotating facing leaves the icon upright.</small></div><div class="field"><label for="token-rotation">Icon / parameter rotation · relative to parent / placement</label><select id="token-rotation">${[[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.rotation||0)===v?'selected':''}>${n}</option>`).join('')}</select><small>Shared definition: changes affect all placements. Placed pieces can also rotate independently.</small></div><div class="callout">A token holds an idea. Nest other tokens inside it to combine their parameters. Rules are descriptions for students to interpret.</div><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit" class="primary">${existing?'Save changes':`Create ${editorLabel()}`}</button></div></form>`));
+  const tokenOptions=$('#token-auto-facing-field');
+  tokenOptions.insertAdjacentHTML('beforeend',`<label class="check-row"><input id="token-non-blocking" type="checkbox" ${draft.nonBlocking?'checked':''}> Nodes occupied by this token count as free</label>`);
   let parameterIds=project.assets.filter(a=>a.parentId===draft.id&&isParameter(a)).map(a=>a.id);
   const pendingParameters=new Map(), removedParameters=new Set();
   const parameterField=document.createElement('div');parameterField.className='field reusable-parameters';
@@ -792,6 +795,7 @@ function tokenDialog(existing, kind='token', parentId=null, onSaved=null, initia
     draft.name=$('#token-name').value.trim();if(!draft.name)return $('#token-name').focus();
     draft.parentId=$('#token-parent').value||null;if(isState(draft))draft.enabled=$('#state-enabled').checked;
     draft.rule=$('#token-rule').value;draft.tags=draft.tags.filter(id=>tag(id));draft.range=Number($('#token-range').value);draft.width=Number($('#token-width').value);draft.rotation=Number($('#token-rotation').value);draft.direction=$('#token-direction').value===''?null:Number($('#token-direction').value);draft.autoFacing=$('#token-auto-facing').checked;draft.followTokenFacing=$('#token-follow-facing').checked;draft.occludedByWalls=$('#token-occlusion').checked;draft.overlapThreshold=$('#token-overlap-enabled').checked?Number($('#token-overlap-count').value):0;draft.overlapColor=$('#token-overlap-color').value;if($('#token-overlap-mode').value==='tags')draft.overlapTagIds=[...document.querySelectorAll('input[name=overlap-tag]:checked')].map(input=>input.value);else draft.overlapTagIds=null;draft.overlapAssetIds=$('#token-overlap-mode').value==='selected'?[...document.querySelectorAll('input[name=overlap-object]:checked')].map(input=>input.value):null;
+    draft.nonBlocking=!isState(draft)&&!isParameter(draft)&&$('#token-non-blocking').checked;
     const action={type:'asset.compose',data:{asset:draft,usageId:uid(),originalUsageId:uid(),removals:[...removedParameters],attachments:[...pendingParameters.keys()].map(id=>({id,usageId:uid(),originalUsageId:uid()}))}};
     try { applyAction(project,action); }catch(error){return toast(error.message);}
     if(dispatch(action)===false)return;
@@ -1302,20 +1306,41 @@ function dropToken(target,payload,x,y){
 document.addEventListener('dragend',()=>{dragPayload=null;clearBehaviourDrop();document.querySelectorAll('.nest-hover,.drop-target').forEach(n=>n.classList.remove('nest-hover','drop-target'));});
 $('#board').addEventListener('pointerdown',e=>{
   if(!play&&!staged&&tool==='patrol'&&e.button===0){
-    const pos=patrolPointerCell(e);if(!pos||!hasNode(level(),pos.x+','+pos.y))return;
-    if(!activePatrol()){toast('Create or select a patrol first.');return;}
-    e.preventDefault();paint={tile:'patrol',cells:new Set([pos.x+','+pos.y])};$('#board').setPointerCapture(e.pointerId);renderBoard();return;
+    const key=patrolPointerCell(e);if(!key||!hasNode(level(),key))return;
+    const patrol=activePatrol();
+    if(!patrol){toast('Create or select a patrol first.');return;}
+    e.preventDefault();
+    paint={tile:'patrol',patrolId:patrol.id,startLength:patrol.nodes.length,nodes:appendPatrolNode(level(),patrol.nodes,key)};
+    $('#board').setPointerCapture(e.pointerId);renderBoard();return;
   }
   if(play||staged||['patrol','select','connect','unlink','link','postIt'].includes(tool)||e.button!==0||e.target.closest('[data-instance],[data-object-link],[data-post-it]'))return;
   const cell=e.target.closest('.cell');if(!cell)return;
   e.preventDefault();paint={tile:painterTile(),cells:new Set([`${cell.dataset.x},${cell.dataset.y}`])};$('#board').setPointerCapture(e.pointerId);renderBoard();
 });
 $('#board').addEventListener('pointermove',e=>{
-  if(!paint)return;if(paint.tile==='patrol'){const pos=patrolPointerCell(e),key=pos&&pos.x+','+pos.y;if(key&&hasNode(level(),key)&&!paint.cells.has(key)){paint.cells.add(key);renderBoard();}return;}const cell=document.elementFromPoint(e.clientX,e.clientY)?.closest('.cell');
+  if(!paint)return;
+  if(paint.tile==='patrol'){
+    const key=patrolPointerCell(e),nodes=key?appendPatrolNode(level(),paint.nodes,key):paint.nodes;
+    if(nodes!==paint.nodes){paint.nodes=nodes;renderBoard();}
+    return;
+  }
+  const cell=document.elementFromPoint(e.clientX,e.clientY)?.closest('.cell');
   if(cell){const key=`${cell.dataset.x},${cell.dataset.y}`;if(!paint.cells.has(key)){paint.cells.add(key);renderBoard();}}
 });
-function patrolPointerCell(e){const rect=$('#board').getBoundingClientRect(),x=Math.floor((e.clientX-rect.left)/rect.width*level().width),y=Math.floor((e.clientY-rect.top)/rect.height*level().height);return x>=0&&y>=0&&x<level().width&&y<level().height?{x,y}:null;}
-function finishPaint(){if(!paint)return;if(paint.tile==='patrol'){const nodes=[...new Set([...(activePatrol()?.nodes||[]),...paint.cells])];paint=null;suppressClickUntil=Date.now()+100;updatePatrol({nodes});return;}const data={levelId:level().id,cells:[...paint.cells].filter(key=>paint.tile==='node'?!hasNode(level(),key):paint.tile==='empty'?!!level().tiles[key]||hasNode(level(),key):level().tiles[key]!==paint.tile),tile:paint.tile};paint=null;if(data.cells.length)dispatch({type:'tile.paint',data});else renderBoard();}
+function patrolPointerCell(e){const rect=$('#board').getBoundingClientRect(),x=Math.floor((e.clientX-rect.left)/rect.width*level().width),y=Math.floor((e.clientY-rect.top)/rect.height*level().height);return x>=0&&y>=0&&x<level().width&&y<level().height?`${x},${y}`:null;}
+function finishPaint(){
+  if(!paint)return;
+  if(paint.tile==='patrol'){
+    const stroke=paint,patrol=activePatrol();
+    paint=null;suppressClickUntil=Date.now()+100;
+    if(!patrol||patrol.id!==stroke.patrolId){renderBoard();return;}
+    const nodes=stroke.nodes.slice(stroke.startLength).reduce((route,key)=>appendPatrolNode(level(),route,key),patrol.nodes);
+    if(nodes===patrol.nodes||updatePatrol({nodes})===false)renderBoard();
+    return;
+  }
+  const data={levelId:level().id,cells:[...paint.cells].filter(key=>paint.tile==='node'?!hasNode(level(),key):paint.tile==='empty'?!!level().tiles[key]||hasNode(level(),key):level().tiles[key]!==paint.tile),tile:paint.tile};
+  paint=null;if(data.cells.length)dispatch({type:'tile.paint',data});else renderBoard();
+}
 $('#board').addEventListener('pointerup',finishPaint);
 $('#board').addEventListener('pointercancel',()=>{paint=null;renderBoard();});
 document.addEventListener('keydown',e=>{

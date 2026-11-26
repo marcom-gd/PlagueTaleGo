@@ -1,14 +1,26 @@
 // Data checks are shared by project imports, editing actions and turn playback.
-export const behaviourNames = {expand:'Expand',spawn:'Spawn',addToTray:'Add to Graveyard / Inventory',applyEffect:'Apply Effect',moveTo:'Move To',moveAway:'Move Away From',blockNode:'Block Node',useEffect:'Use',teleport:'Teleport',advanceOnEvent:'Advance Turn On Event'};
+export const behaviourNames = {expand:'Expand',spawn:'Spawn',addToTray:'Add to Graveyard / Inventory',applyEffect:'Apply Effect',moveTo:'Move To',moveAway:'Move Away From',wait:'Wait',blockNode:'Block Node',useEffect:'Use',teleport:'Teleport',advanceOnEvent:'Advance Turn On Event'};
 export const triggerBehaviours=Object.fromEntries(Object.entries(behaviourNames).filter(([type])=>['applyEffect','moveTo','moveAway','teleport','expand','spawn','addToTray'].includes(type)));
 export const effectActions = {switchState:'Switch State',graveyard:'Send to Graveyard',inventory:'Add to Inventory',setMoveTarget:'Set Move Target',flush:'Flush',teleport:'Teleport'};
 export const turnEvents = {use:'Use',moved:'Object Moved',inventoryAdded:'Object Added To Inventory',inventoryDropped:'Object Dropped from Inventory'};
 export const eligibilityMode = b => b.eligibleMode ?? (b.eligibleAssetIds===null?'any':'selected');
+export const maxWaitTurns = 100;
 const key = value => typeof value==='string' && value.length>0 && value.length<=100;
 const selection = value => value===null || Array.isArray(value)&&value.length<=500&&new Set(value).size===value.length&&value.every(key);
 export function validateTags(value){if(!Array.isArray(value)||!selection(value))throw Error('Invalid target tags.');}
 export function validateReferenceOverrides(value){
   if(value!==undefined&&(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length>60000||Object.entries(value).some(([id,target])=>!key(id)||!key(target))))throw Error('Invalid copied object references.');
+}
+export function validateWaitProgress(progress){
+  if(progress===undefined)return;
+  if(!Array.isArray(progress)||progress.length>15000)throw Error('Invalid wait progress.');
+  const ids=new Set();
+  for(const entry of progress){
+    if(!entry||!key(entry.assignedId)||!key(entry.behaviourId)||!Number.isInteger(entry.remaining)||entry.remaining<0||entry.remaining>=maxWaitTurns)throw Error('Invalid wait progress.');
+    const id=JSON.stringify([entry.assignedId,entry.behaviourId]);
+    if(ids.has(id))throw Error('Duplicate wait progress.');
+    ids.add(id);
+  }
 }
 export function validateMoveTarget(target) {
   if(!target || !['self','position','object','tags'].includes(target.type))throw Error('Invalid move target.');
@@ -54,6 +66,7 @@ export function validateBehaviours(asset,isEffect) {
     if(b.type==='spawn'&&(!key(b.spawnAssetId)||!Number.isInteger(b.spawnCount)||b.spawnCount<1||b.spawnCount>100))throw Error('Spawn needs an object type and 1–100 copies.');
     if(b.type==='addToTray'&&!['graveyard','inventory'].includes(b.tray))throw Error('Choose Graveyard or Inventory.');
     if(b.type==='moveAway'&&(!Number.isInteger(b.steps)||b.steps<1||b.steps>100))throw Error('Move Away From needs 1–100 steps.');
+    if(b.type==='wait'&&(!Number.isInteger(b.turns)||b.turns<1||b.turns>maxWaitTurns))throw Error(`Wait needs 1–${maxWaitTurns} turns.`);
     if(b.type==='blockNode'&&(!selection(b.blockAssetIds)||b.blockMode!==undefined&&!['any','selected','tags'].includes(b.blockMode)||b.blockMode==='tags'&&!Array.isArray(b.blockTagIds)||!['movement','movementAndEffects'].includes(b.blockScope)))throw Error('Invalid Block Node settings.');
     if(b.type==='teleport'){
       if(!['self','object','tags'].includes(b.teleportTarget)||b.teleportTarget==='object'&&!key(b.targetInstanceId)||b.teleportTarget==='tags'&&!Array.isArray(b.targetTagIds))throw Error('Choose an object to teleport.');

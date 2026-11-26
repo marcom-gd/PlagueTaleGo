@@ -107,6 +107,30 @@ test('Loop return paths persist over turns and copied levels, and respect blocke
   let run=resolveTurn(p);assert.deepEqual([run.project.levels[0].instances[0].x,run.project.levels[0].instances[0].y],[1,3]);
   l.instances.push(placed('block','rat',1,3));run=resolveTurn(p);assert.equal(run.log[0].count,0);
 });
+test('closed patrols complete the painted circuit in either direction and respect the closing connection',()=>{
+  for(const [target,steps] of [['patrolStart',[[1,2],[1,3],[0,3],[0,2],[1,2]]],['patrolEnd',[[0,3],[1,3],[1,2],[0,2],[0,3]]]]){
+    let {p,l}=patrolFixture(target);
+    l.instances[0].y=2;
+    l.patrols[0].nodes.push('0,2');
+    for(const position of steps){
+      p=resolveTurn(p).project;
+      assert.deepEqual([p.levels[0].instances[0].x,p.levels[0].instances[0].y],position);
+    }
+  }
+  let {p,l}=patrolFixture();
+  l.patrols[0].nodes.push('0,2');l.blockedLinks=['0,2|0,3'];p.assets[0].behaviours[0].steps=5;
+  p=resolveTurn(p).project;
+  assert.deepEqual([p.levels[0].instances[0].x,p.levels[0].instances[0].y],[0,3]);
+  p.levels[0].blockedLinks=[];p.assets[0].behaviours[0].steps=2;
+  p=resolveTurn(p).project;
+  assert.deepEqual([p.levels[0].instances[0].x,p.levels[0].instances[0].y],[1,2]);
+  ({p,l}=patrolFixture('patrolEnd'));
+  l.patrols[0].nodes.push('0,2');l.nodes.push('2,3');l.instances[0].x=2;
+  for(const position of [[1,3],[1,2],[0,2],[0,3]]){
+    p=resolveTurn(p).project;
+    assert.deepEqual([p.levels[0].instances[0].x,p.levels[0].instances[0].y],position);
+  }
+});
 
 test('new settings validate, save as reusable blocks, and remap internal Spawn references in hierarchy copies',()=>{
   let {p}=fixture();p.assets[1].parentId='guard';p.assets[0].behaviours=[spawn()];
