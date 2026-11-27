@@ -3,7 +3,7 @@ import {clone, uid, validateProject, descendants, isParameter, isState, applyAct
 export const levelFileFormat = 'plague-tale-go-levels';
 const nameKey = name => name.trim().toLowerCase();
 const referenceKeys = new Set(['assetId','parentId','parameterId','definitionId','stateKey','spawnAssetId','throwAssetId','targetAssetId','targetInstanceId','patrolId','assignedId','behaviourId','sourceId','levelId','instanceId']);
-const referenceArrays = new Set(['tags','overlapAssetIds','overlapTagIds','eligibleAssetIds','usableAssetIds','blockAssetIds','throwTargetAssetIds','hitAssetIds','distractAssetIds','eligibleTagIds','usableTagIds','blockTagIds','targetTagIds','removedAssetIds','instanceIds','behaviourOrder','tagIds']);
+const referenceArrays = new Set(['tags','overlapAssetIds','overlapTagIds','eligibleAssetIds','usableAssetIds','blockAssetIds','throwTargetAssetIds','assetIds','hitAssetIds','distractAssetIds','eligibleTagIds','usableTagIds','blockTagIds','targetTagIds','removedAssetIds','instanceIds','behaviourOrder','tagIds']);
 const canonical = value => JSON.stringify(sort(value));
 function sort(value) {
   if(Array.isArray(value))return value.map(sort);
@@ -145,6 +145,16 @@ export function buildLevelImport(input, file, options={}, makeId=uid) {
     const result=rewrite(b,map);
     for(const key of referenceArrays)if(Array.isArray(b[key]))result[key]=b[key].filter(id=>!omitted.has(id)).map(id=>map.get(id)??id);
     for(const key of ['spawnAssetId','throwAssetId','targetAssetId','stateKey'])if(omitted.has(b[key]))result.enabled=false;
+    function cleanCondition(c){
+        const next=rewrite(c,map);
+        for(const key of ['assetIds','tagIds'])if(c[key])next[key]=c[key].filter(id=>!omitted.has(id)).map(id=>map.get(id)??id);
+        return next;
+    }
+    if(b.throwTargetConditions){
+      result.throwTargetConditions=b.throwTargetConditions.map(cleanCondition);
+      if(b.throwTargetGroups===undefined&&b.throwTargetConditions.some(c=>c.stateKey&&omitted.has(c.stateKey)))result.enabled=false;
+    }
+    if(b.throwTargetGroups)result.throwTargetGroups=b.throwTargetGroups.map(g=>({...g,conditions:g.conditions.map(cleanCondition)}));
     if(b.trigger)result.trigger=cleanBehaviour(b.trigger);
     return result;
   }

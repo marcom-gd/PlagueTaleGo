@@ -13,7 +13,8 @@ const output = path.resolve('outputs/user-test-check');
 await mkdir(output, { recursive: true });
 const project = newProject();
 project.assets = [
-  { id: 'hero', name: 'Amicia', icon: 'amicia', kind: 'token', rule: '', tags: [], range: 1, color: '#b8cf96', parentId: null, canBeMovedInUserTest: true },
+  { id: 'hero', name: 'Amicia', icon: 'amicia', kind: 'token', rule: '', tags: [], range: 1, color: '#b8cf96', parentId: null, canBeMovedInUserTest: true,
+    behaviours:[{id:'move-turn',type:'advanceOnEvent',enabled:true,events:['moved']}] },
   { id: 'exit', name: 'Exit', icon: 'torch', kind: 'token', rule: '', tags: [], range: 1, color: '#edc47c', parentId: null,
     behaviours: [{ id: 'finish', type: 'levelComplete', enabled: true, targetAssetId: 'hero' }] }
 ];
@@ -53,8 +54,15 @@ async function join(tab, nickname, complete = false) {
   await visible(complete ? '#level-tabs .completed' : '#level-tabs .current', tab);
 }
 async function win(n) {
+  assert.equal(await page.locator('#next-turn').isDisabled(),true);
   await page.locator(`[data-instance="hero-${n}"]`).click();
   await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('#next-turn').isDisabled(),true,'Actions record new turns; the button cannot create another');
+  await page.locator('#previous-turn').click();
+  assert.equal(await page.locator('#next-turn').isEnabled(),true,'A previously recorded next turn can be replayed');
+  await page.locator('#next-turn').click();
+  assert.equal(await page.locator('#next-turn').isDisabled(),true,'Replaying the latest recorded turn cannot extend history');
+  await page.locator(`[data-instance="hero-${n}"]`).click();
   await page.keyboard.press('ArrowRight');
   await celebrate(n === 1);
 }
@@ -89,6 +97,7 @@ try {
   assert.equal(await page.locator('[data-level="intro"],[data-level="middle"],[data-level="outro"]').count(),0);
   assert.equal(await page.locator('#level-title').textContent(),'The first little step');
   assert.equal(await page.locator('#playtest-mode').inputValue(), 'userTest');
+  assert.equal(await page.locator('#next-turn').isDisabled(),true);
   assert.equal(await page.locator('#edit-mode').isVisible(), false);
   assert.equal(await page.locator('[data-exit-projector]').isVisible(), false);
   assert.equal(await page.locator('#level-tabs button:disabled').count(), 2);
@@ -135,7 +144,10 @@ try {
   assert.equal(await page.locator('[data-level="level-3"]').isDisabled(), true);
   await visible('[data-level="level-2"] .level-player', observer);
   await page.locator('#playtest-mode').selectOption('sandbox');
+  assert.equal(await page.locator('#next-turn').isEnabled(),true,'Sandbox can create a fresh turn');
+  await page.locator('#next-turn').click();
   await page.locator('#playtest-mode').selectOption('userTest');
+  assert.equal(await page.locator('#next-turn').isDisabled(),true);
   await page.screenshot({ path: path.join(output, '04-progress.png') });
   await win(2); await answer({ friction: false });
   await page.setViewportSize({ width: 390, height: 844 });

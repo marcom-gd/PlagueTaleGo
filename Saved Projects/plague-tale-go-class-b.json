@@ -3,12 +3,6 @@
   "title": "Plague Tale GO",
   "tags": [
     {
-      "id": "1a92f388-58db-45ba-9287-dcdf16913873",
-      "name": "Consumable",
-      "rule": "Change state in 4 round.",
-      "color": "#a9ef76"
-    },
-    {
       "id": "93bab9b8-ba4a-4cd3-a20e-aa6de5a2d0cb",
       "name": "Expand",
       "rule": "",
@@ -499,51 +493,6 @@
       "overlapTagIds": null
     },
     {
-      "id": "34f59495-ce7f-4d4b-aa8d-15960249b556",
-      "kind": "token",
-      "name": "MeatRange",
-      "icon": "area",
-      "rule": "Attract rats in range",
-      "color": "#804040",
-      "tags": [],
-      "range": 1,
-      "parentId": null,
-      "variant": "default",
-      "width": 3,
-      "rotation": 0,
-      "direction": null,
-      "autoFacing": false,
-      "followTokenFacing": false,
-      "occludedByWalls": false,
-      "overlapThreshold": 1,
-      "overlapColor": "#00ff40",
-      "overlapAssetIds": [
-        "4943bb94-4a4c-4285-bcd4-ee25d91f3b65"
-      ]
-    },
-    {
-      "id": "607a826c-f11f-4c79-b893-1792cb2dcc4c",
-      "kind": "state",
-      "name": "Neutral",
-      "icon": "guard",
-      "rule": "Stands by. \nPriority : 0",
-      "color": "#b8cf96",
-      "tags": [],
-      "range": 2,
-      "parentId": "1ff814f6-7ea8-48a3-a48e-ad6ba9d4c296",
-      "enabled": true,
-      "variant": "alive",
-      "width": 3,
-      "rotation": 0,
-      "direction": null,
-      "autoFacing": false,
-      "followTokenFacing": false,
-      "occludedByWalls": false,
-      "overlapThreshold": 0,
-      "overlapColor": "#edc47c",
-      "overlapAssetIds": null
-    },
-    {
       "id": "9791461b-870a-4b61-ae40-b38f5ba0a3a4",
       "kind": "token",
       "name": "Pot",
@@ -570,28 +519,6 @@
       "nonBlocking": false,
       "canBeMovedInUserTest": false,
       "overlapTagIds": null
-    },
-    {
-      "id": "bfefe6fc-c4e7-4d8b-a68f-9dedbbc545d1",
-      "kind": "state",
-      "name": "Searching",
-      "icon": "guard",
-      "rule": "Goes for the latest event source registered by its own perception.\nPriority : 2",
-      "color": "#b8cf96",
-      "tags": [],
-      "range": 2,
-      "parentId": "1ff814f6-7ea8-48a3-a48e-ad6ba9d4c296",
-      "enabled": false,
-      "variant": "alive",
-      "width": 3,
-      "rotation": 0,
-      "direction": null,
-      "autoFacing": false,
-      "followTokenFacing": false,
-      "occludedByWalls": false,
-      "overlapThreshold": 0,
-      "overlapColor": "#edc47c",
-      "overlapAssetIds": null
     },
     {
       "id": "1ff814f6-7ea8-48a3-a48e-ad6ba9d4c296",
@@ -815,7 +742,10 @@
           "steps": 1,
           "returnToStart": true,
           "approachDelay": 0,
-          "returnDelay": 1
+          "returnDelay": 1,
+          "distractTarget": "area",
+          "destinationMode": "hitPosition",
+          "definitionId": "ebc2d8a7-eb22-48e2-afbc-2372292f34f9"
         }
       ],
       "overlapTagIds": null,
@@ -855,9 +785,25 @@
           "throwAssetId": "d1e72744-db15-49b7-adfc-6357817211ff",
           "requireInventory": true,
           "destroyOnHit": true,
-          "throwTargetAssetIds": [
-            "9791461b-870a-4b61-ae40-b38f5ba0a3a4",
-            "a933e550-feb6-4ab0-9fe2-f70a54b774e2"
+          "throwTargetGroups": [
+            {
+              "mode": "any",
+              "conditions": [
+                {
+                  "type": "objects",
+                  "assetIds": [
+                    "6c6a4cb6-f785-4354-933e-f326cb5b1519",
+                    "9791461b-870a-4b61-ae40-b38f5ba0a3a4",
+                    "a933e550-feb6-4ab0-9fe2-f70a54b774e2"
+                  ]
+                },
+                {
+                  "type": "state",
+                  "stateKey": "0ac3f910-27bd-4e8d-ba4a-eaeac224df6e",
+                  "enabled": true
+                }
+              ]
+            }
           ]
         }
       ]
@@ -946,27 +892,6 @@
       "range": 2,
       "parentId": "e51bc713-bdd4-43ec-b204-2b5a54256aac",
       "variant": "on",
-      "width": 3,
-      "rotation": 0,
-      "direction": null,
-      "autoFacing": false,
-      "followTokenFacing": false,
-      "occludedByWalls": false,
-      "overlapThreshold": 0,
-      "overlapColor": "#edc47c",
-      "overlapAssetIds": null
-    },
-    {
-      "id": "4e354ff3-35de-4115-952e-1fad40500af5",
-      "kind": "token",
-      "name": "Path A",
-      "icon": "square",
-      "rule": "",
-      "color": "#b8cf96",
-      "tags": [],
-      "range": 2,
-      "parentId": null,
-      "variant": "filled",
       "width": 3,
       "rotation": 0,
       "direction": null,
@@ -1137,48 +1062,6 @@
       "overlapAssetIds": null
     },
     {
-      "id": "229dd4ff-0621-4699-bfa9-1884fb4ad35e",
-      "kind": "token",
-      "name": "Visual Perception",
-      "icon": "bell",
-      "rule": "",
-      "color": "#b8cf96",
-      "tags": [],
-      "range": 2,
-      "parentId": "1ff814f6-7ea8-48a3-a48e-ad6ba9d4c296",
-      "variant": "idle",
-      "width": 3,
-      "rotation": 0,
-      "direction": null,
-      "autoFacing": false,
-      "followTokenFacing": false,
-      "occludedByWalls": false,
-      "overlapThreshold": 0,
-      "overlapColor": "#edc47c",
-      "overlapAssetIds": null
-    },
-    {
-      "id": "460cb212-f4bd-4307-b051-87d12309ea8b",
-      "kind": "token",
-      "name": "Event Source",
-      "icon": "diamond",
-      "rule": "The origin of a sound or visual event.",
-      "color": "#8fb8c2",
-      "tags": [],
-      "range": 2,
-      "parentId": "bfefe6fc-c4e7-4d8b-a68f-9dedbbc545d1",
-      "variant": "filled",
-      "width": 3,
-      "rotation": 0,
-      "direction": null,
-      "autoFacing": false,
-      "followTokenFacing": false,
-      "occludedByWalls": false,
-      "overlapThreshold": 0,
-      "overlapColor": "#edc47c",
-      "overlapAssetIds": null
-    },
-    {
       "id": "43e89150-0ffb-4580-9cc3-6f555b59f908",
       "kind": "token",
       "name": "Rats",
@@ -1203,47 +1086,6 @@
       "overlapThreshold": 0,
       "overlapColor": "#edc47c",
       "overlapAssetIds": null
-    },
-    {
-      "id": "a472e930-b33e-4242-8a61-6a33467fc6a5",
-      "kind": "token",
-      "name": "Threat Area",
-      "icon": "sight",
-      "rule": "Extend visual perception.",
-      "color": "#fa4300",
-      "tags": [],
-      "range": 2,
-      "parentId": "229dd4ff-0621-4699-bfa9-1884fb4ad35e",
-      "variant": "default",
-      "width": 3,
-      "rotation": 0,
-      "direction": null,
-      "autoFacing": false,
-      "followTokenFacing": true,
-      "occludedByWalls": true,
-      "overlapThreshold": 0,
-      "overlapColor": "#edc47c",
-      "overlapAssetIds": null,
-      "parameterId": "40f82d9d-d927-4a3a-9e6d-e07328598d4d",
-      "overlapTagIds": null,
-      "behaviours": [
-        {
-          "id": "a1f7e898-e75a-4a80-be9d-bbda2b588c85",
-          "enabled": true,
-          "type": "applyEffect",
-          "action": "switchState",
-          "eligibleAssetIds": [
-            "d78a3d05-b813-4479-8b0c-9a49415f13c2"
-          ],
-          "eligibleMode": "selected",
-          "stateKey": "8f1f0562-5e69-4b92-97d9-f2dc981ab940",
-          "stateEnabled": true,
-          "eligibleTagIds": [],
-          "stateToggle": false,
-          "definitionId": "8e5dcf29-ce85-4dc0-ba79-7b4288da4bb9"
-        }
-      ],
-      "parameterLayer": "Vision"
     },
     {
       "id": "1cad26f9-5953-4072-aca4-21b9b032aa83",
@@ -1340,9 +1182,25 @@
           "throwAssetId": "d1e72744-db15-49b7-adfc-6357817211ff",
           "requireInventory": true,
           "destroyOnHit": true,
-          "throwTargetAssetIds": [
-            "9791461b-870a-4b61-ae40-b38f5ba0a3a4",
-            "a933e550-feb6-4ab0-9fe2-f70a54b774e2"
+          "throwTargetGroups": [
+            {
+              "mode": "any",
+              "conditions": [
+                {
+                  "type": "objects",
+                  "assetIds": [
+                    "6c6a4cb6-f785-4354-933e-f326cb5b1519",
+                    "9791461b-870a-4b61-ae40-b38f5ba0a3a4",
+                    "a933e550-feb6-4ab0-9fe2-f70a54b774e2"
+                  ]
+                },
+                {
+                  "type": "state",
+                  "stateKey": "0ac3f910-27bd-4e8d-ba4a-eaeac224df6e",
+                  "enabled": true
+                }
+              ]
+            }
           ]
         }
       ]
@@ -2213,7 +2071,10 @@
           "steps": 1,
           "returnToStart": true,
           "approachDelay": 0,
-          "returnDelay": 1
+          "returnDelay": 1,
+          "distractTarget": "area",
+          "destinationMode": "hitPosition",
+          "definitionId": "ebc2d8a7-eb22-48e2-afbc-2372292f34f9"
         }
       ],
       "overlapTagIds": null,
@@ -2240,12 +2101,40 @@
       "overlapThreshold": 0,
       "overlapColor": "#edc47c",
       "overlapTagIds": null,
-      "overlapAssetIds": null
+      "overlapAssetIds": null,
+      "behaviours": [
+        {
+          "id": "b11236f6-4b73-4d47-8968-73dc103151c7",
+          "enabled": true,
+          "type": "onHit",
+          "hitAssetIds": [
+            "d1e72744-db15-49b7-adfc-6357817211ff"
+          ],
+          "action": "switchState",
+          "stateKey": "0ac3f910-27bd-4e8d-ba4a-eaeac224df6e",
+          "stateEnabled": false,
+          "stateToggle": false
+        },
+        {
+          "id": "3433bb8e-b2c3-4965-ac1a-577e80a04c5f",
+          "enabled": true,
+          "type": "distraction",
+          "hitAssetIds": null,
+          "distractAssetIds": [],
+          "distractTarget": "self",
+          "destinationMode": "throwerPosition",
+          "steps": 1,
+          "returnToStart": true,
+          "approachDelay": 0,
+          "returnDelay": 1
+        }
+      ]
     },
     {
       "id": "d3d0f003-85af-439a-b2ad-c3e7728123c9",
       "kind": "token",
       "name": "Lantern",
+      "exclusiveStates": true,
       "icon": "lantern",
       "rule": "",
       "color": "#b8cf96",
@@ -2266,7 +2155,8 @@
     },
     {
       "id": "03a840a2-c2cc-4e43-965c-6ac142a56297",
-      "kind": "token",
+      "kind": "state",
+      "enabled": false,
       "name": "Lanterne-Break",
       "icon": "lantern",
       "rule": "Light turn off, sound distract",
@@ -2320,7 +2210,10 @@
           "steps": 1,
           "returnToStart": true,
           "approachDelay": 0,
-          "returnDelay": 1
+          "returnDelay": 1,
+          "distractTarget": "area",
+          "destinationMode": "hitPosition",
+          "definitionId": "ebc2d8a7-eb22-48e2-afbc-2372292f34f9"
         }
       ],
       "overlapTagIds": null,
@@ -3053,50 +2946,10 @@
           "steps": 1,
           "returnToStart": true,
           "approachDelay": 0,
-          "returnDelay": 1
-        }
-      ],
-      "overlapTagIds": null,
-      "parameterLayer": "Other",
-      "nonBlocking": false,
-      "canBeMovedInUserTest": false,
-      "parameterId": "a4a07d22-24d5-4199-b3d7-dfc8717e3446"
-    },
-    {
-      "id": "26a635cd-8cb8-42fa-8acd-892dd603617f",
-      "kind": "token",
-      "name": "Attraction range",
-      "icon": "area",
-      "rule": "distraction range of the pots",
-      "color": "#edc47c",
-      "tags": [
-        "cedb3b0d-6496-4d98-bc91-71e5d28dfa6a"
-      ],
-      "range": 3,
-      "parentId": "1b494765-a373-4e18-ae1a-15d93c824355",
-      "variant": "default",
-      "width": 3,
-      "rotation": 0,
-      "direction": null,
-      "autoFacing": false,
-      "followTokenFacing": false,
-      "occludedByWalls": false,
-      "overlapThreshold": 0,
-      "overlapColor": "#edc47c",
-      "overlapAssetIds": null,
-      "behaviours": [
-        {
-          "id": "fcfe9d35-83c6-41a0-b456-18257968a152",
-          "enabled": true,
-          "type": "distraction",
-          "hitAssetIds": null,
-          "distractAssetIds": [
-            "6c6a4cb6-f785-4354-933e-f326cb5b1519"
-          ],
-          "steps": 1,
-          "returnToStart": true,
-          "approachDelay": 0,
-          "returnDelay": 1
+          "returnDelay": 1,
+          "distractTarget": "area",
+          "destinationMode": "hitPosition",
+          "definitionId": "ebc2d8a7-eb22-48e2-afbc-2372292f34f9"
         }
       ],
       "overlapTagIds": null,
@@ -3139,7 +2992,10 @@
           "steps": 1,
           "returnToStart": true,
           "approachDelay": 0,
-          "returnDelay": 1
+          "returnDelay": 1,
+          "distractTarget": "area",
+          "destinationMode": "hitPosition",
+          "definitionId": "ebc2d8a7-eb22-48e2-afbc-2372292f34f9"
         }
       ],
       "overlapTagIds": null,
@@ -3147,6 +3003,49 @@
       "nonBlocking": false,
       "canBeMovedInUserTest": false,
       "parameterId": "a4a07d22-24d5-4199-b3d7-dfc8717e3446"
+    },
+    {
+      "id": "05bf7993-2736-48a1-8c99-251535f3e9a1",
+      "kind": "token",
+      "name": "Threat Area",
+      "icon": "sight",
+      "rule": "Extend visual perception.",
+      "color": "#fa4300",
+      "tags": [],
+      "range": 2,
+      "parentId": "1ff814f6-7ea8-48a3-a48e-ad6ba9d4c296",
+      "variant": "default",
+      "width": 3,
+      "rotation": 0,
+      "direction": null,
+      "autoFacing": false,
+      "followTokenFacing": true,
+      "occludedByWalls": true,
+      "overlapThreshold": 0,
+      "overlapColor": "#edc47c",
+      "overlapAssetIds": null,
+      "overlapTagIds": null,
+      "behaviours": [
+        {
+          "id": "a1f7e898-e75a-4a80-be9d-bbda2b588c85",
+          "enabled": true,
+          "type": "applyEffect",
+          "action": "switchState",
+          "eligibleAssetIds": [
+            "d78a3d05-b813-4479-8b0c-9a49415f13c2"
+          ],
+          "eligibleMode": "selected",
+          "stateKey": "8f1f0562-5e69-4b92-97d9-f2dc981ab940",
+          "stateEnabled": true,
+          "eligibleTagIds": [],
+          "stateToggle": false,
+          "definitionId": "8e5dcf29-ce85-4dc0-ba79-7b4288da4bb9"
+        }
+      ],
+      "nonBlocking": false,
+      "canBeMovedInUserTest": false,
+      "parameterLayer": "Vision",
+      "parameterId": "40f82d9d-d927-4a3a-9e6d-e07328598d4d"
     }
   ],
   "levels": [
@@ -3541,7 +3440,10 @@
           "y": 2,
           "rotation": 0,
           "note": "",
-          "direction": 180
+          "direction": 180,
+          "stateOverrides": {
+            "0ac3f910-27bd-4e8d-ba4a-eaeac224df6e": false
+          }
         },
         {
           "id": "68d6f414-fdb6-4438-90ac-a2156f58402e",
@@ -3582,7 +3484,7 @@
           "y": 4,
           "rotation": 0,
           "note": "",
-          "direction": 90
+          "direction": 180
         }
       ],
       "postIts": [],
@@ -3693,8 +3595,6 @@
           "patrolColor": "#d66565",
           "stateOverrides": {
             "fdf48233-2a57-491e-a4f9-6419f5642e27": true,
-            "607a826c-f11f-4c79-b893-1792cb2dcc4c": false,
-            "bfefe6fc-c4e7-4d8b-a68f-9dedbbc545d1": false,
             "0ac3f910-27bd-4e8d-ba4a-eaeac224df6e": true
           }
         },
@@ -4847,8 +4747,7 @@
           "rotation": 0,
           "note": "",
           "stateOverrides": {
-            "fdf48233-2a57-491e-a4f9-6419f5642e27": true,
-            "607a826c-f11f-4c79-b893-1792cb2dcc4c": false
+            "fdf48233-2a57-491e-a4f9-6419f5642e27": true
           }
         },
         {
@@ -4859,8 +4758,7 @@
           "rotation": 0,
           "note": "",
           "stateOverrides": {
-            "fdf48233-2a57-491e-a4f9-6419f5642e27": true,
-            "607a826c-f11f-4c79-b893-1792cb2dcc4c": false
+            "fdf48233-2a57-491e-a4f9-6419f5642e27": true
           }
         },
         {
@@ -5046,9 +4944,7 @@
           "patrolColor": null,
           "stateOverrides": {
             "0ac3f910-27bd-4e8d-ba4a-eaeac224df6e": false,
-            "fdf48233-2a57-491e-a4f9-6419f5642e27": false,
-            "607a826c-f11f-4c79-b893-1792cb2dcc4c": false,
-            "bfefe6fc-c4e7-4d8b-a68f-9dedbbc545d1": false
+            "fdf48233-2a57-491e-a4f9-6419f5642e27": false
           }
         },
         {
@@ -5075,8 +4971,8 @@
           "color": "#f6dfa0",
           "space": "canvas",
           "kind": "note",
-          "x": 976.1212177276611,
-          "y": 54.509429931640625
+          "x": 1119.3719501495361,
+          "y": 48.448822021484375
         }
       ],
       "startingInventory": [
@@ -5332,6 +5228,126 @@
       ],
       "startingInventory": [],
       "hideFromPlaytest": true
+    },
+    {
+      "id": "4d209747-eac9-461a-b121-82393a7c8a17",
+      "name": "Gym (Marco)",
+      "width": 10,
+      "height": 9,
+      "tiles": {
+        "1,1": "floor",
+        "2,1": "floor",
+        "3,1": "floor",
+        "4,1": "floor",
+        "5,1": "floor",
+        "6,1": "floor",
+        "7,1": "floor",
+        "8,1": "floor",
+        "1,2": "floor",
+        "2,2": "floor",
+        "3,2": "floor",
+        "4,2": "floor",
+        "5,2": "floor",
+        "6,2": "floor",
+        "7,2": "floor",
+        "8,2": "floor",
+        "1,3": "floor",
+        "2,3": "floor",
+        "3,3": "floor",
+        "4,3": "floor",
+        "5,3": "floor",
+        "6,3": "floor",
+        "7,3": "floor",
+        "8,3": "floor",
+        "1,4": "floor",
+        "2,4": "floor",
+        "3,4": "floor",
+        "4,4": "floor",
+        "5,4": "floor",
+        "6,4": "floor",
+        "7,4": "floor",
+        "8,4": "floor",
+        "1,5": "floor",
+        "2,5": "floor",
+        "3,5": "floor",
+        "4,5": "floor",
+        "5,5": "floor",
+        "6,5": "floor",
+        "7,5": "floor",
+        "8,5": "floor",
+        "1,6": "floor",
+        "2,6": "floor",
+        "3,6": "floor",
+        "4,6": "floor",
+        "5,6": "floor",
+        "6,6": "floor",
+        "7,6": "floor",
+        "8,6": "floor",
+        "1,7": "floor",
+        "2,7": "floor",
+        "3,7": "floor",
+        "4,7": "floor",
+        "5,7": "floor",
+        "6,7": "floor",
+        "7,7": "floor",
+        "8,7": "floor"
+      },
+      "blockedLinks": [],
+      "objectLinks": [],
+      "patrols": [],
+      "instances": [
+        {
+          "id": "8a82eaa5-0be5-4cef-bb28-0efb12c2e2a7",
+          "assetId": "6c6a4cb6-f785-4354-933e-f326cb5b1519",
+          "x": 7,
+          "y": 1,
+          "rotation": 0,
+          "note": "",
+          "direction": 90,
+          "stateOverrides": {
+            "0ac3f910-27bd-4e8d-ba4a-eaeac224df6e": true
+          }
+        },
+        {
+          "id": "ef40ec7b-962d-4b9e-8371-47800e526cf3",
+          "assetId": "d78a3d05-b813-4479-8b0c-9a49415f13c2",
+          "x": 1,
+          "y": 1,
+          "rotation": 0,
+          "note": ""
+        },
+        {
+          "id": "75393c71-ff5d-4d4f-ab0e-93a929bba7d2",
+          "assetId": "6c6a4cb6-f785-4354-933e-f326cb5b1519",
+          "x": 7,
+          "y": 4,
+          "rotation": 0,
+          "note": "",
+          "direction": 180,
+          "locked": false
+        }
+      ],
+      "postIts": [],
+      "startingInventory": [
+        {
+          "assetId": "d1e72744-db15-49b7-adfc-6357817211ff",
+          "count": 0
+        }
+      ],
+      "hideFromPlaytest": true,
+      "nodes": [
+        "1,1",
+        "2,1",
+        "3,1",
+        "4,1",
+        "5,1",
+        "6,1",
+        "7,1",
+        "8,1",
+        "7,4",
+        "7,3",
+        "7,2"
+      ]
     }
   ],
   "cardDraws": [],
@@ -5363,7 +5379,9 @@
     "0a11d69a-db20-408b-b03f-343b775c573b",
     "30af8740-7084-42f6-bb81-b51a12e55f78",
     "155680f1-91b1-4dbe-b002-d5d9e8b0b464",
-    "81573654-480a-4a12-aedf-fce0b8f82119"
+    "81573654-480a-4a12-aedf-fce0b8f82119",
+    "b11236f6-4b73-4d47-8968-73dc103151c7",
+    "3433bb8e-b2c3-4965-ac1a-577e80a04c5f"
   ],
   "behaviourLibrary": [
     {
@@ -5384,47 +5402,6 @@
       }
     },
     {
-      "id": "b0cf405e-1650-44bd-b929-72da32668439",
-      "name": "Attract Sound",
-      "rule": "",
-      "behaviour": {
-        "id": "0fcc337c-8024-4e21-995b-1de97feb1bf7",
-        "enabled": true,
-        "type": "applyEffect",
-        "action": "setMoveTarget",
-        "eligibleAssetIds": [
-          "6c6a4cb6-f785-4354-933e-f326cb5b1519"
-        ],
-        "eligibleMode": "selected",
-        "stateKey": "Guar",
-        "stateEnabled": true,
-        "eligibleTagIds": [],
-        "moveTarget": {
-          "type": "self"
-        }
-      },
-      "color": "#b281cf"
-    },
-    {
-      "id": "8e8aac30-dac5-48d3-8486-f19dc2031913",
-      "name": "Pot Impact",
-      "rule": "",
-      "behaviour": {
-        "id": "f9829490-4f2f-455f-88cb-13b73ef9359a",
-        "enabled": true,
-        "type": "applyEffect",
-        "action": "switchState",
-        "eligibleAssetIds": [
-          "9791461b-870a-4b61-ae40-b38f5ba0a3a4"
-        ],
-        "eligibleMode": "selected",
-        "stateKey": "7ddc6455-c5a1-46e0-b665-6e64a6412af2",
-        "stateEnabled": true,
-        "eligibleTagIds": [],
-        "stateToggle": false
-      }
-    },
-    {
       "id": "3a2b6bf0-e623-4ae9-87a8-c922b2ca341f",
       "name": "Walk",
       "rule": "Move by one node",
@@ -5438,25 +5415,6 @@
         "patrolMode": "loop"
       },
       "color": "#5088dd"
-    },
-    {
-      "id": "c79ee1d6-534a-4842-8161-a2731395f6cb",
-      "name": "Exit Level",
-      "rule": "",
-      "behaviour": {
-        "id": "4b8ae07a-2808-467e-906d-805270ef0a3b",
-        "enabled": true,
-        "type": "applyEffect",
-        "action": "graveyard",
-        "eligibleAssetIds": [
-          "3943ad3c-34c5-4d54-a01c-ab1a03b918fe"
-        ],
-        "eligibleMode": "selected",
-        "stateKey": "",
-        "stateEnabled": true,
-        "eligibleTagIds": []
-      },
-      "color": "#75ad82"
     },
     {
       "id": "63001d12-3cf1-44cb-aa44-d8e2a14a39fc",
@@ -5564,6 +5522,26 @@
         "blockMode": "selected",
         "blockTagIds": [],
         "excludeSelf": true
+      }
+    },
+    {
+      "id": "ebc2d8a7-eb22-48e2-afbc-2372292f34f9",
+      "name": "Distraction",
+      "rule": "",
+      "behaviour": {
+        "id": "90014d1c-a72e-4c30-bb82-7bee8cb0534e",
+        "enabled": true,
+        "type": "distraction",
+        "hitAssetIds": null,
+        "distractAssetIds": [
+          "6c6a4cb6-f785-4354-933e-f326cb5b1519"
+        ],
+        "steps": 1,
+        "returnToStart": true,
+        "approachDelay": 0,
+        "returnDelay": 1,
+        "distractTarget": "area",
+        "destinationMode": "hitPosition"
       }
     }
   ]

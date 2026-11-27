@@ -25,6 +25,16 @@ function fixture(){
 const hit=f=>throwObject(f.p,f.inventory,[],f.choice,{x:4,y:3});
 const guard=p=>p.levels[0].instances.find(i=>i.id==='guard1');
 
+test('impact-position mode freezes the receiver cell while legacy modes keep tracking it',()=>{
+  for(const mode of ['hitPosition','hitObject',undefined]){
+    const f=fixture();if(mode!==undefined)f.distraction.destinationMode=mode;
+    validateProject(f.p);let p=hit(f).project;
+    p.levels[0].instances.find(i=>i.id==='pot1').x=5;p=resolveTurn(p).project;
+    assert.deepEqual(guard(p).distraction.destination,{x:mode==='hitPosition'?4:5,y:3});
+    assert.equal(guard(p).distraction.fixedDestination,mode==='hitPosition'?true:undefined);
+  }
+});
+
 test('throw hover previews the actual Distraction area and eligible objects without changing the project',()=>{
   const f=fixture();f.l.instances.push(i('locked','guard',6,4,{locked:true}),i('far','guard',10,7),i('near','guard',6,5));
   const before=JSON.stringify(f),preview=throwPreview(f.p,f.inventory,f.choice,{x:4,y:3});

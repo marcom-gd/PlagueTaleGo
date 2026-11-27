@@ -11,6 +11,7 @@ import { applyTextScale, textScale } from './ui-preferences.js';
 import { copyLevel } from './editing.js';
 import { levelTabDragging } from './level-tabs.js';
 import { levelTransferUI } from './level-transfer-ui.js';
+import { reviewProjectCleanup } from './project-cleanup.js';
 import { playtestModes, canMoveInPlaytest, checkPlaytestMovement } from './playtest-mode.js';
 import { userTestFlow } from './user-test-flow.js';
 import { behaviourEditor } from './behaviour-editor.js';
@@ -18,7 +19,7 @@ import { behaviourNames, effectActions } from './behaviour-schema.js';
 import {behaviourChip,behaviourHierarchy} from './behaviour-ui.js';
 import {workshopPanels} from './workshop-panels.js';
 import {behaviourDragging,behaviourDropTarget,clearBehaviourDrop} from './behaviour-drag.js';
-import { createSequence, captureSequence, nextTurn, previousTurn, validateSequence, eventTurn } from './turn-sequence.js';
+import { createSequence, captureSequence, hasRecordedNextTurn, nextTurn, previousTurn, validateSequence, eventTurn } from './turn-sequence.js';
 import {gameOutcome,outcomeMessages} from './game-outcomes.js';
 import { availableUses, useObject, eventsAdvanceTurn, movementEvents } from './behaviours.js';
 import { availableThrows, throwObject } from './throw-object.js';
@@ -26,7 +27,8 @@ import { throwingUI, throwIcon } from './throwing-ui.js';
 import { checkMovement, effectOverlay } from './behaviour-areas.js';
 import { startingInventoryEditor } from './starting-inventory-editor.js';
 import {dropCarriedItem,interactionOwners,releaseMissingCarriers} from './carried-items.js';
-import {carriedBadges} from './carried-ui.js';
+import {carriedBadges,nestedBadges} from './carried-ui.js';
+import {entityEffects,trayTransferEffects} from './entity-effects.js';
 import {countdown,syncLifetimes} from './lifetimes.js';
 import {serverSupportsEditor,serverUpdateMessage} from './server-compatibility.js';
 import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles, isClosedPatrol, appendPatrolNode, canConnectNodes } from './model.js';
@@ -128,6 +130,7 @@ const throwing=throwingUI({getState:()=>({project:play,inventory:playerInventory
     play=result.project;playerInventory=result.inventory;graveyard=result.graveyard;
     throwing.cancel();notifyPlayEvents(before,result.events,result.log);render();toast('Object thrown.');
   }});
+const entityMotion=entityEffects({art:(a,i)=>tokenArt(a,i)});
 behaviourDragging({isPlay:()=>!!play,dispatch,onDragEnd:()=>{suppressClickUntil=Date.now()+200;}});
 const atomicKinds={parameters:'Parameters',behaviours:'Behaviours',tags:'Tags',tokens:'Tokens'};
 const atomicFilters=new Set(Object.keys(atomicKinds)),collapsedCatalogs=new Set();
@@ -319,9 +322,11 @@ function render() {
   if(play&&turnSequence){
     const turn=turnSequence.cursor;
     $('#turn-label').textContent=turn?`Turn ${turn}`:'Ready to start';
-    $('#next-turn').textContent=turn?'Next turn →':'Start turn 1 →';
+    const replayOnly=playtestMode==='userTest';
+    $('#next-turn').textContent=replayOnly?'Replay next turn →':turn?'Next turn →':'Start turn 1 →';
+    $('#next-turn').title=replayOnly?'Replay a recorded turn. Play an action to record new turns.':'Advance to the next turn';
     $('#previous-turn').disabled=turn===0;
-    $('#next-turn').disabled=!!turnOutcome;
+    $('#next-turn').disabled=!!turnOutcome || replayOnly&&!hasRecordedNextTurn(turnSequence,turnState());
     $('#turn-log').disabled=!turn;
   }
   $('#canvas-wrap').classList.toggle('playtesting',!!play);
@@ -445,6 +450,7 @@ function renderBoard() {
     const stack = l.instances.filter(n => n.x === i.x && n.y === i.y).indexOf(i);
     html += `<button class="piece ${i.locked?'scenery-locked':''} ${isSelected?'selected':''} ${tool==='link'&&linkDraft.includes(i.id)?'link-picked':''}" data-instance="${esc(i.id)}" draggable="${tool!=='link'&&!i.locked&&canManuallyMove(i)}" title="${esc(a.name)} · ${(i.rotation+(a.rotation||0))%360}°" aria-label="${esc(a.name)} at ${i.x+1}, ${i.y+1}, rotated ${(i.rotation+(a.rotation||0))%360} degrees" style="--x:${i.x};--y:${i.y};--rotation:${(i.rotation+(a.rotation||0))%360}deg;${stack ? `margin-left:${stack*5}px;margin-top:${stack*-4}px;` : ''}">${tokenArt(a,i)}${i.patrolColor?`<span class="instance-color-dot" style="background:${i.patrolColor}" title="Patrol color ${i.patrolColor}"></span>`:''}${facing===null?'':`<span class="direction" data-facing="${facing}" aria-hidden="true">▴</span>`}${children.length ? `<span class="child-count">${children.length}</span>` : ''}</button>`;
   }
+  html+=nestedBadges(currentProject(),l,tokenArt,esc);
   if(play){
     html+=carriedBadges(play,l,playerInventory,tokenArt,esc);
     for(const held of interactionOwners(play,l,playerInventory).filter(i=>i.carriedBy))if(visibleParameterLayers.size||selected?.id===held.carriedBy.instanceId)html+=overlays(asset(held.assetId),held,l,selected?.id===held.carriedBy.instanceId);
@@ -467,6 +473,7 @@ function renderBoard() {
   board.innerHTML = html+objectLinkArtwork(l);
   throwing.render();
   $('#zoom-label').textContent = `${Math.round(zoom*100)}%`;
+  entityMotion.flush(play,l.id);
 }
 function overlays(a,i,l,isSelected) {
   const effects = [a,...activeDescendants(currentProject(),a.id,i)].filter(a => parameterIcons.includes(a.icon));
@@ -609,10 +616,11 @@ function objectLinkDialog(existing) {
   watchEditor($('#object-link-form'));
 }
 function fitBoard() {
+  entityMotion.clear();
   const view = $('#board-viewport'), l=level();
   zoom = Math.min(1.3, Math.max(.3, Math.min((view.clientWidth-30)/(l.width*48),(view.clientHeight-15)/(l.height*48)))); renderBoard();
 }
-function changeZoom(delta) { zoom=Math.max(.3,Math.min(2,zoom+delta)); renderBoard(); }
+function changeZoom(delta) { entityMotion.clear();zoom=Math.max(.3,Math.min(2,zoom+delta)); renderBoard(); }
 function selectInstance(id) { editingTools?.onSingleSelect(id);selected={type:'instance',id}; staged=null; tool='select'; render(); }
 function place(assetId,x,y) {
   if (!asset(assetId)) return;
@@ -674,17 +682,19 @@ function nextLevel(){
   play=clone(playInitialState.project);playStart=clone(play);playerInventory=clone(playInitialState.inventory);graveyard=[];inventoryExpanded=playerInventory.length>0;savedOutcomes.clear();
   turnSequence=createSequence(turnState());restoreTurn();fitBoard();
 }
-function notifyPlayEvents(before,events,actionLog=[]){
+function notifyPlayEvents(before,events,actionLog=[],actionEffects){
   if(!play||eventTurnQueued)return;
+  actionEffects??=trayTransferEffects(before,turnState());
+  entityMotion.enqueue(actionEffects);
   if(!eventsAdvanceTurn(before.project,play,events)){
     const outcome=gameOutcome(play,graveyard,level().id);
-    if(outcome){turnSequence=eventTurn(turnSequence,before,{...turnState(),outcome},actionLog);turnOutcome=outcome;}
+    if(outcome){turnSequence=eventTurn(turnSequence,before,{...turnState(),outcome},actionLog,actionEffects);turnOutcome=outcome;}
     return;
   }
   const session=playStart,prior=clone(before);eventTurnQueued=true;
   queueMicrotask(()=>{
     eventTurnQueued=false;if(!play||session!==playStart)return;
-    try{turnSequence=eventTurn(turnSequence,prior,turnState(),actionLog);restoreTurn();}
+    try{turnSequence=eventTurn(turnSequence,prior,turnState(),actionLog,actionEffects);restoreTurn(true,actionEffects.length);}
     catch(error){toast(error.message);}
   });
 }
@@ -696,7 +706,7 @@ function useCanvasObject(id){
     try{
       const before=turnState(),result=useObject(play,playerInventory,graveyard,choice);
       play=result.project;playerInventory=result.inventory;graveyard=result.graveyard;
-      notifyPlayEvents(before,result.events,result.log);render();toast(result.log[0]?.message||'Used object.');
+      notifyPlayEvents(before,result.events,result.log,result.visualEffects);render();toast(result.log[0]?.message||'Used object.');
     }catch(error){toast(error.message);}
   };
   if(choices.length===1)return perform(choices[0]);
@@ -721,9 +731,11 @@ function throwCanvasObject(id){
   showDialog(modal('Choose a Throw Object action',`<div class="use-action-choices">${choices.map((choice,n)=>`<button data-throw-choice="${n}" ${choice.available?'':'disabled'}>${esc(asset(choice.throwAssetId).name)}<small>${esc(asset(level().instances.find(i=>i.id===choice.instanceId).assetId).name)} / ${esc(asset(choice.assignedId).name)}${choice.available?'':' · required in player inventory'}</small></button>`).join('')}</div>`));
   $('#dialog-content').querySelectorAll('[data-throw-choice]').forEach(button=>button.onclick=()=>{closeDialog();choose(choices[Number(button.dataset.throwChoice)]);});
 }
-function restoreTurn(){
+function restoreTurn(animate=false,skipEffects=0){
   throwing.cancel();
+  if(!animate)entityMotion.clear();
   const frame=clone(turnSequence.frames[turnSequence.cursor]);
+  if(animate)entityMotion.enqueue((frame.visualEffects||[]).slice(skipEffects));
   turnOutcome=frame.outcome||null;
   play=frame.project;playerInventory=frame.inventory;graveyard=frame.graveyard;levelId=frame.levelId;
   selected=null;staged=null;tool='select';connectionStart=null;linkDraft=[];render();
@@ -744,7 +756,7 @@ function advanceTurn(previous=false){
   if(!play||!turnSequence)return;
   if(turnOutcome&&!previous)return;
   saveNote();
-  try{turnSequence=previous?previousTurn(turnSequence,turnState()):nextTurn(turnSequence,turnState());restoreTurn();}
+  try{turnSequence=previous?previousTurn(turnSequence,turnState()):nextTurn(turnSequence,turnState(),undefined,{recordedOnly:playtestMode==='userTest'});entityMotion.clear();restoreTurn(!previous);}
   catch(error){toast(error.message);}
 }
 function saveTurns(){
@@ -1069,6 +1081,35 @@ async function saveProject() {
 const levelTransfers=levelTransferUI({getProject:()=>project,getLevelId:()=>level().id,showDialog,modal,closeDialog,dispatch,toast,esc,
   canImport:()=>{if(play||userTestSession){toast('Return to Edit before importing levels.');return false;}if(serverNeedsRestart||appConfig.levelTransferVersion!==1){toast(serverUpdateMessage);return false;}if(!connected||pending.length||busy||notePending||revision<0){toast('Wait until all changes are saved and the room is connected.');return false;}return true;},
   imported:id=>{levelId=id;selected=null;staged=null;render();fitBoard();}});
+function cleanupDialog() {
+  if(play||userTestSession)return toast('Return to Edit before cleaning up the library.');
+  if(pending.length||busy||notePending||!connected||revision<0)return toast('Wait until all changes are saved and the room is connected.');
+  const before=JSON.stringify(project);
+  let review;
+  try{review=reviewProjectCleanup(project);}catch(error){return toast(error.message);}
+  const {removed,total}=review;
+  const categories=[
+    ['Objects',removed.assets.filter(a=>!isState(a)&&!isParameter(a))],
+    ['States',removed.assets.filter(isState)],
+    ['Parameters',removed.assets.filter(a=>isParameter(a)&&!a.parameterId)],
+    ['Parameter attachments',removed.assets.filter(a=>a.parameterId)],
+    ['Reusable behaviours',removed.behaviourLibrary],
+    ['Tags',removed.tags]
+  ];
+  const assetIds=new Set(removed.assets.map(a=>a.id));
+  const list=categories.filter(([,items])=>items.length).map(([label,items])=>`<details open><summary>${label} · ${items.length}</summary><ul>${items.map(item=>`<li>${esc(assetIds.has(item.id)?assetPath(item):item.name)}</li>`).join('')}</ul></details>`).join('');
+  showDialog(modal('Clean up unused definitions',`<p>Checked all ${project.levels.length} levels, including hidden levels, starting inventory, and behaviour references. Objects keep their complete hierarchies, including disabled states and behaviours.</p>${total?`<p><b>${total} unused library items</b> can be removed from this shared project. Review the list below. You can undo this cleanup.</p><div class="cleanup-list">${list}</div>`:'<p role="status">Nothing to remove. Every library item is used or referenced by a level.</p>'}`,
+    `<button data-close>${total?'Cancel':'Close'}</button>${total?'<button id="confirm-cleanup" class="danger">Remove unused items</button>':''}`));
+  if(total)$('#confirm-cleanup').onclick=()=>{
+    if(play||userTestSession)return toast('Return to Edit before cleaning up the library.');
+    if(pending.length||busy||notePending||!connected)return toast('Wait until all changes are saved and the room is connected.');
+    if(JSON.stringify(project)!==before){cleanupDialog();return toast('The project changed. Review the updated cleanup list.');}
+    if(dispatch({type:'project.replace',data:review.project})===false)return;
+    if(selected?.type==='asset'&&assetIds.has(selected.id))selected=null;
+    if(assetIds.has(staged))staged=null;
+    closeDialog();render();toast(`Removed ${total} unused library items. Undo is available.`);
+  };
+}
 function filesDialog() {
   showDialog(modal('Your workshop, to keep.',`<p>Changes save automatically on this server. Keep a project backup, or export a connected inventory for Excel and Google Sheets.</p><div class="files-grid"><button id="export-project">↧ Export project<small>Download a readable .json backup</small></button><button id="export-inventory">▦ Export spreadsheet<small>Recipes, challenges and progression · .xlsx</small></button><button id="import-project">↥ Import project<small>Replace this room with a saved project</small></button><button id="example-project">✧ Load example<small>A torch, light, rats, and a guard</small></button><button id="new-project">＋ Clear workshop<small>Start again with an empty library</small></button></div><div class="callout">Room <b>${esc(room)}</b> · Project backups contain the saved design. Spreadsheet exports can also capture your private playtest before you return to Edit.</div>`));
   const levelButtons=document.createElement('div');levelButtons.className='files-grid level-file-actions';
@@ -1076,6 +1117,11 @@ function filesDialog() {
   $('.files-grid').before(levelButtons);
   $('#export-levels').onclick=levelTransfers.exportDialog;
   $('#import-levels').onclick=levelTransfers.importFile;
+  const cleanupButton=document.createElement('button');
+  cleanupButton.id='cleanup-project';cleanupButton.disabled=!!play||userTestSession;
+  cleanupButton.innerHTML='Clean up unused definitions<small>Review objects, parameters, behaviours and tags unused by every level</small>';
+  $('.files-grid').append(cleanupButton);
+  cleanupButton.onclick=cleanupDialog;
   $('#export-project').onclick=()=>{
     const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'}), url=URL.createObjectURL(blob), a=document.createElement('a');
     a.href=url;a.download=`plague-tale-go-${room}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Project exported.');

@@ -8,32 +8,35 @@ export function objectsHit(project,level,destination,excludedId=null){
 }
 
 // Both the hover preview and impact use exactly the same area and recipients.
-export function distractionReactions(project,level,projectile,hits,inventory=[]){
+export function distractionReactions(project,level,projectile,hits,inventory=[],thrower=null){
   const reactions=[];
   for(const source of hits)for(const {assigned,behaviour:b} of placementBehaviours(project,source)){
     if(b.type!=='distraction'||!matchesSelection(project,projectile,b.hitAssetIds))continue;
-    const root=project.assets.find(a=>a.id===source.assetId),overlay=effectOverlay(project,root,assigned,source,level,inventory),area=new Set(overlay.cells.map(([x,y])=>`${x},${y}`)),targetIds=[];
+    if(b.destinationMode==='throwerPosition'&&!thrower)continue;
+    const self=b.distractTarget==='self',root=project.assets.find(a=>a.id===source.assetId);
+    const overlay=self?{cells:[[source.x,source.y]],color:assigned.color||root.color}:effectOverlay(project,root,assigned,source,level,inventory),area=new Set(overlay.cells.map(([x,y])=>`${x},${y}`)),targetIds=[];
     for(const target of level.instances){
       const asset=project.assets.find(a=>a.id===target.assetId);
-      if(target.id===source.id||target.id===projectile.id||target.locked||isParameter(asset)||isState(asset)||!assetIsActive(project,target.assetId,target)||!area.has(cell(target))||!matchesSelection(project,target,b.distractAssetIds))continue;
+      if((self?target.id!==source.id:target.id===source.id)||target.id===projectile.id||target.locked||isParameter(asset)||isState(asset)||!assetIsActive(project,target.assetId,target)||!area.has(cell(target))||!self&&!matchesSelection(project,target,b.distractAssetIds))continue;
       targetIds.push(target.id);
     }
-    reactions.push({sourceId:source.id,assignedId:assigned.id,behaviour:b,cells:overlay.cells,color:overlay.color,targetIds});
+    const goal=b.destinationMode==='throwerPosition'?thrower:source;
+    reactions.push({sourceId:source.id,assignedId:assigned.id,behaviour:b,cells:overlay.cells,color:overlay.color,targetIds,destination:{x:goal.x,y:goal.y}});
   }
   return reactions;
 }
 
 // Impact reactions run before the projectile is consumed. The receiver's own
 // parameter supplies its attraction area; walking afterward may leave this area.
-export function distractOnImpact(project,level,projectile,hits,inventory=[]){
+export function distractOnImpact(project,level,projectile,hits,inventory=[],thrower=null){
   const log=[];
-  for(const reaction of distractionReactions(project,level,projectile,hits,inventory)){
+  for(const reaction of distractionReactions(project,level,projectile,hits,inventory,thrower)){
     const source=level.instances.find(i=>i.id===reaction.sourceId),b=reaction.behaviour;
     for(const id of reaction.targetIds){
       const target=level.instances.find(i=>i.id===id),previous=target.distraction,asset=project.assets.find(a=>a.id===target.assetId);
       const originFacing=Object.hasOwn(previous||{},'originFacing')?previous.originFacing:facingDirection(asset,target);
       const originFacingInherited=previous?.originFacingInherited??(target.direction===undefined);
-      target.distraction={sourceId:source.id,origin:clone(previous?.origin||{x:target.x,y:target.y}),originFacing,originFacingInherited,destination:{x:source.x,y:source.y},phase:'approach',steps:b.steps,returnToStart:b.returnToStart,approachWait:b.approachDelay??0,returnWait:b.returnDelay??0};
+      target.distraction={sourceId:source.id,origin:clone(previous?.origin||{x:target.x,y:target.y}),originFacing,originFacingInherited,destination:clone(reaction.destination),...(['throwerPosition','hitPosition'].includes(b.destinationMode)?{fixedDestination:true}:{}),phase:'approach',steps:b.steps,returnToStart:b.returnToStart,approachWait:b.approachDelay??0,returnWait:b.returnDelay??0};
     }
     log.push({assetName:project.assets.find(a=>a.id===source.assetId).name,type:'distraction',count:reaction.targetIds.length});
   }
@@ -57,7 +60,7 @@ export function advanceDistractions(project,level,move,inventory=[]){
     const d=instance.distraction;
     if(!d||instance.locked||!assetIsActive(project,instance.assetId,instance))continue;
     const source=level.instances.find(i=>i.id===d.sourceId&&assetIsActive(project,i.assetId,i));
-    if(d.phase==='approach'){
+    if(d.phase==='approach'&&!d.fixedDestination){
       if(source)d.destination={x:source.x,y:source.y};
       else if(d.returnToStart){d.phase='return';d.returnWait=0;}
       else{delete instance.distraction;continue;}

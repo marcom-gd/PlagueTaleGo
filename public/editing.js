@@ -1,11 +1,14 @@
 import {clone,uid,descendants} from './model.js';
 function remapBehaviour(b,ids,behaviours){
   const result={...clone(b),id:behaviours.get(b.id)||b.id};
+  const condition=c=>({...clone(c),...(c.assetIds?{assetIds:c.assetIds.map(id=>ids.get(id)||id)}:{}),...(c.stateKey?{stateKey:ids.get(c.stateKey)||c.stateKey}:{})});
   if(!b.definitionId){
     if(b.stateKey)result.stateKey=ids.get(b.stateKey)||b.stateKey;
     if(b.spawnAssetId)result.spawnAssetId=ids.get(b.spawnAssetId)||b.spawnAssetId;
     if(b.type==='levelComplete')result.targetAssetId=ids.get(b.targetAssetId)||b.targetAssetId;
     if(b.throwAssetId)result.throwAssetId=ids.get(b.throwAssetId)||b.throwAssetId;
+    if(b.throwTargetConditions)result.throwTargetConditions=b.throwTargetConditions.map(condition);
+    if(b.throwTargetGroups)result.throwTargetGroups=b.throwTargetGroups.map(g=>({...clone(g),conditions:g.conditions.map(condition)}));
     for(const key of ['eligibleAssetIds','usableAssetIds','blockAssetIds','throwTargetAssetIds','hitAssetIds','distractAssetIds'])if(b[key])result[key]=b[key].map(id=>ids.get(id)||id);
     if(b.trigger)result.trigger=remapBehaviour(b.trigger,ids,behaviours);
   }

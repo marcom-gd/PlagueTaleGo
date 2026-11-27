@@ -130,13 +130,13 @@ function putInTray(tray,target){
   if(stack){stack.items.push(clone(target));if(stack.count!==0)stack.count++;}
   else tray.push({id:target.id,assetId:target.assetId,count:1,items:[clone(target)]});
 }
-function transferObject(project,level,tray,instance,assetId,makeId,inventory=[]){
+function transferObject(project,level,tray,instance,assetId,makeId,inventory=[],visualEffects=[],destination='inventory'){
   const stored=inventory.find(s=>s.items.some(i=>i.id===instance.id)),source=stored?.items.find(i=>i.id===instance.id)||instance;
   if(assetId===instance.assetId){
     const item={...source,x:instance.x,y:instance.y,sourceLevelId:level.id};delete item.carriedBy;
     if(stored){stored.items=stored.items.filter(i=>i.id!==instance.id);if(stored.count!==0)stored.count=stored.items.length;if(!stored.items.length)inventory.splice(inventory.indexOf(stored),1);}
     else level.instances=level.instances.filter(i=>i.id!==instance.id);
-    putInTray(tray,item);return item;
+    putInTray(tray,item);visualEffects.push({type:'tray',levelId:level.id,instance:clone(item),from:{x:instance.x,y:instance.y},tray:destination});return item;
   }
   const root=project.assets.find(a=>a.id===instance.assetId),asset=project.assets.find(a=>a.id===assetId);
   const parent=project.assets.find(a=>a.id===asset.parentId),contents=new Set(descendants(project,assetId).map(a=>a.id));
@@ -149,6 +149,7 @@ function transferObject(project,level,tray,instance,assetId,makeId,inventory=[])
   const lifetimeProgress=source.lifetimeProgress?.filter(entry=>entry.assignedId===assetId||contents.has(entry.assignedId));
   if(lifetimeProgress?.length)item.lifetimeProgress=lifetimeProgress;
   putInTray(tray,item);
+  visualEffects.push({type:'tray',levelId:level.id,instance:clone(item),from:{x:instance.x,y:instance.y},tray:destination});
   source.removedAssetIds=[...(source.removedAssetIds||[]).filter(id=>!contents.has(id)),assetId];
   pruneWaitProgress(project,source);
   return item;
@@ -190,7 +191,7 @@ function effectTargets(project,level,owner,assigned,b,inventory=[]){
     return [...(placed?[placedTarget(i)]:[]),...(nestedIds.size?nestedTargets(project,i,nestedIds):[])];
   });
 }
-function applyEffectTo(project,level,owner,b,targets,inventory,graveyard,events,makeId){
+function applyEffectTo(project,level,owner,b,targets,inventory,graveyard,events,makeId,visualEffects){
   let eligible=[...targets];
   if(b.action==='flush'){
     const types=new Set(eligible.map(t=>t.assetId)),blocked=blockedNodes(project,level,owner.assetId,'effects',owner.id,inventory);
@@ -231,30 +232,36 @@ function applyEffectTo(project,level,owner,b,targets,inventory,graveyard,events,
         if(b.action==='inventory')continue;
         stored.items=stored.items.filter(i=>i!==target);stored.count=stored.items.length;
         if(!stored.count)inventory.splice(inventory.indexOf(stored),1);
-        const item=clone(target);delete item.carriedBy;putInTray(graveyard,item);count++;continue;
+        const item=clone(target);delete item.carriedBy;putInTray(graveyard,item);
+        const carrier=level.instances.find(i=>i.id===target.carriedBy?.instanceId);
+        visualEffects.push({type:'tray',levelId:level.id,instance:clone(item),from:{x:carrier?.x??target.x,y:carrier?.y??target.y},tray:'graveyard'});count++;continue;
       }
-      const item=transferObject(project,level,b.action==='inventory'?inventory:graveyard,target,assetId,makeId,inventory);count++;
+      const item=transferObject(project,level,b.action==='inventory'?inventory:graveyard,target,assetId,makeId,inventory,visualEffects,b.action==='inventory'?'inventory':'graveyard');count++;
       if(b.action==='inventory')events.push({type:'inventoryAdded',levelId:level.id,instanceId:item.id,instance:clone(item)});
     }
     if(b.action==='teleport'&&!stored&&teleport(project,level,owner,target,b.destination,events,inventory))count++;
   }
   pruneLinks(level);return count;
 }
-function expand(project,level,owner,assigned,b,makeId,inventory=[]){
+function expand(project,level,owner,assigned,b,makeId,inventory=[],visualEffects=[]){
   const root=project.assets.find(a=>a.id===owner.assetId);let count=0;
   for(const [x,y] of effectOverlay(project,root,assigned,owner,level,inventory).cells){
     if(!hasNode(level,`${x},${y}`)||(!b.allowStacking&&level.instances.some(i=>i.assetId===root.id&&i.x===x&&i.y===y)))continue;
     if(level.instances.length>=1000)throw Error('Expansion exceeds the 1,000 objects per level limit. Previous turn preserved.');
     const copy={...clone(owner),id:makeId(),x,y,locked:false};delete copy.carriedBy;delete copy.sourceLevelId;
     level.instances.push(copy);count++;
+    visualEffects.push({type:'expand',levelId:level.id,instance:clone(copy),from:{x:owner.x,y:owner.y}});
   }
   return count;
 }
-function spawn(project,level,owner,b,makeId){
+function spawn(project,level,owner,b,makeId,visualEffects){
   const asset=project.assets.find(a=>a.id===b.spawnAssetId);
   if(!asset||isState(asset)||isParameter(asset))return 0;
   if(level.instances.length+b.spawnCount>1000)throw Error('Spawn exceeds the 1,000 objects per level limit. Previous state preserved.');
-  for(let n=0;n<b.spawnCount;n++)level.instances.push({id:makeId(),assetId:asset.id,x:owner.x,y:owner.y,rotation:asset.rotation??0,locked:false,note:''});
+  for(let n=0;n<b.spawnCount;n++){
+    const instance={id:makeId(),assetId:asset.id,x:owner.x,y:owner.y,rotation:asset.rotation??0,locked:false,note:''};
+    level.instances.push(instance);visualEffects.push({type:'spawn',levelId:level.id,instance:clone(instance),from:{x:owner.x,y:owner.y}});
+  }
   return b.spawnCount;
 }
 function teleportTargets(project,level,owner,b){
@@ -279,7 +286,7 @@ function waitTurn(instance,assignedId,b){
 // A fixed queue keeps new copies from acting until the following turn. Passive
 // blockers and clickable Use actions are evaluated from the current state.
 export function resolveTurn(input,inventory=[],graveyard=[],makeId=uid,outcomeLevelId=input.levels[0]?.id,freshLifetimeKeys=[]){
-  const project=clone(validateProject(input)),nextInventory=clone(inventory),nextGraveyard=clone(graveyard),log=[],events=[];
+  const project=clone(validateProject(input)),nextInventory=clone(inventory),nextGraveyard=clone(graveyard),log=[],events=[],visualEffects=[];
   const initialized=syncLifetimes(project,nextInventory);
   let outcome=gameOutcome(project,nextGraveyard,outcomeLevelId);
   const ranks=new Map(orderedBehaviours(project).map(({behaviour},n)=>[behaviour.id,n])),queue=[],waiting=new Set();
@@ -302,14 +309,14 @@ export function resolveTurn(input,inventory=[],graveyard=[],makeId=uid,outcomeLe
     if(b.type==='wait'&&waitTurn(stored||owner,assigned.id,b)){waiting.add(owner.id);count=1;}
     if(!owner.carriedBy&&(b.type==='moveTo'||b.type==='moveAway'))count=move(project,level,owner,b,root,undefined,nextInventory);
     if(b.type==='blockNode')count=parameterOverlay(project,root,assigned,owner,level).cells.filter(([x,y])=>hasNode(level,`${x},${y}`)).length;
-    if(b.type==='expand')count=expand(project,level,owner,assigned,b,makeId,nextInventory);
-    if(b.type==='spawn')count=spawn(project,level,owner,b,makeId);
+    if(b.type==='expand')count=expand(project,level,owner,assigned,b,makeId,nextInventory,visualEffects);
+    if(b.type==='spawn')count=spawn(project,level,owner,b,makeId,visualEffects);
     if(b.type==='addToTray'){
       let target=assigned;
       while(target!==root&&(isState(target)||isParameter(target)))target=project.assets.find(a=>a.id===target.parentId);
-      transferObject(project,level,b.tray==='inventory'?nextInventory:nextGraveyard,owner,target.id,makeId,nextInventory);pruneLinks(level);count=1;
+      transferObject(project,level,b.tray==='inventory'?nextInventory:nextGraveyard,owner,target.id,makeId,nextInventory,visualEffects,b.tray);pruneLinks(level);count=1;
     }
-    if(b.type==='applyEffect')count=applyEffectTo(project,level,owner,b,effectTargets(project,level,owner,assigned,b,nextInventory),nextInventory,nextGraveyard,events,makeId);
+    if(b.type==='applyEffect')count=applyEffectTo(project,level,owner,b,effectTargets(project,level,owner,assigned,b,nextInventory),nextInventory,nextGraveyard,events,makeId,visualEffects);
     if(b.type==='teleport'){
       for(const target of teleportTargets(project,level,owner,b))if(effectCanReach(project,level,owner,target,null,nextInventory)&&teleport(project,level,owner,target,b.destination,events,nextInventory))count++;
     }
@@ -321,7 +328,7 @@ export function resolveTurn(input,inventory=[],graveyard=[],makeId=uid,outcomeLe
   const activated=syncLifetimes(project,nextInventory);
   log.push(...advanceLifetimes(project,nextInventory,[...freshLifetimeKeys,...initialized,...activated]));
   releaseMissingCarriers(project,nextInventory);
-  return {project:validateProject(project),inventory:nextInventory,graveyard:nextGraveyard,log,...(outcome?{outcome}:{})};
+  return {project:validateProject(project),inventory:nextInventory,graveyard:nextGraveyard,log,visualEffects,...(outcome?{outcome}:{})};
 }
 
 // A fixed impact queue prevents a newly enabled state from reacting to the
@@ -359,7 +366,7 @@ export function availableUses(project,level,inventory=[]){
   return uses.sort((a,b)=>(ranks.get(a.behaviourId)??Infinity)-(ranks.get(b.behaviourId)??Infinity));
 }
 export function useObject(input,inventory,graveyard,choice){
-  const project=clone(validateProject(input)),level=project.levels.find(l=>l.id===choice.levelId),nextInventory=clone(inventory),nextGraveyard=clone(graveyard),events=[];
+  const project=clone(validateProject(input)),level=project.levels.find(l=>l.id===choice.levelId),nextInventory=clone(inventory),nextGraveyard=clone(graveyard),events=[],visualEffects=[];
   const use=level&&availableUses(project,level,nextInventory).find(u=>u.instanceId===choice.instanceId&&u.assignedId===choice.assignedId&&u.behaviourId===choice.behaviourId&&u.usedId===choice.usedId&&u.collectorId===choice.collectorId);
   if(!use)throw Error('This object is no longer usable from here.');
   const owner=interactionOwners(project,level,nextInventory).find(i=>i.id===use.instanceId),used=level.instances.find(i=>i.id===use.usedId),b=project.assets.find(a=>a.id===use.assignedId).behaviours.find(b=>b.id===use.behaviourId);
@@ -374,7 +381,7 @@ export function useObject(input,inventory,graveyard,choice){
   if(owner.carriedBy)events.push({type:'use',levelId:level.id,instanceId:owner.carriedBy.instanceId});
   const trigger=b.trigger||b;let count=0;
   if(trigger.enabled!==false){
-    if(['applyEffect','useEffect'].includes(trigger.type))count=applyEffectTo(project,level,owner,trigger,targets.map(placedTarget),nextInventory,nextGraveyard,events,uid);
+    if(['applyEffect','useEffect'].includes(trigger.type))count=applyEffectTo(project,level,owner,trigger,targets.map(placedTarget),nextInventory,nextGraveyard,events,uid,visualEffects);
     else for(const target of targets){
       if(!level.instances.some(i=>i.id===target.id))continue;
       if(['moveTo','moveAway'].includes(trigger.type)){
@@ -382,16 +389,16 @@ export function useObject(input,inventory,graveyard,choice){
         if(moved)events.push({type:'moved',levelId:level.id,instanceId:target.id});
       }
       if(trigger.type==='teleport')for(const item of teleportTargets(project,level,target,trigger))if(effectCanReach(project,level,target,item,null,nextInventory)&&teleport(project,level,target,item,trigger.destination,events,nextInventory))count++;
-      if(trigger.type==='expand')count+=expand(project,level,target,project.assets.find(a=>a.id===use.assignedId),trigger,uid,nextInventory);
-      if(trigger.type==='spawn')count+=spawn(project,level,target,trigger,uid);
+      if(trigger.type==='expand')count+=expand(project,level,target,project.assets.find(a=>a.id===use.assignedId),trigger,uid,nextInventory,visualEffects);
+      if(trigger.type==='spawn')count+=spawn(project,level,target,trigger,uid,visualEffects);
       if(trigger.type==='addToTray'){
-        transferObject(project,level,trigger.tray==='inventory'?nextInventory:nextGraveyard,target,target.assetId,uid,nextInventory);pruneLinks(level);count++;
+        transferObject(project,level,trigger.tray==='inventory'?nextInventory:nextGraveyard,target,target.assetId,uid,nextInventory,visualEffects,trigger.tray);pruneLinks(level);count++;
         if(trigger.tray==='inventory')events.push({type:'inventoryAdded',levelId:level.id,instanceId:target.id,instance:clone(target)});
       }
     }
   }
   syncLifetimes(project,nextInventory);
-  return {project:validateProject(project),inventory:nextInventory,graveyard:nextGraveyard,log:[logEntry(project,owner,b,count)],events};
+  return {project:validateProject(project),inventory:nextInventory,graveyard:nextGraveyard,log:[logEntry(project,owner,b,count)],events,visualEffects};
 }
 export function eventsAdvanceTurn(before,after,events){
   return events.some(event=>[before,after].some(project=>{
