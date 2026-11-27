@@ -9,7 +9,7 @@ function remapBehaviour(b,ids,behaviours){
     if(b.throwAssetId)result.throwAssetId=ids.get(b.throwAssetId)||b.throwAssetId;
     if(b.throwTargetConditions)result.throwTargetConditions=b.throwTargetConditions.map(condition);
     if(b.throwTargetGroups)result.throwTargetGroups=b.throwTargetGroups.map(g=>({...clone(g),conditions:g.conditions.map(condition)}));
-    for(const key of ['eligibleAssetIds','usableAssetIds','blockAssetIds','throwTargetAssetIds','hitAssetIds','distractAssetIds'])if(b[key])result[key]=b[key].map(id=>ids.get(id)||id);
+    for(const key of ['eligibleAssetIds','usableAssetIds','blockAssetIds','throwTargetAssetIds','hitAssetIds','distractAssetIds','beamParameterIds'])if(b[key])result[key]=b[key].map(id=>ids.get(id)||id);
     if(b.trigger)result.trigger=remapBehaviour(b.trigger,ids,behaviours);
   }
   return result;

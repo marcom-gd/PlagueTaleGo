@@ -91,8 +91,10 @@ test('Apply Effect, linked effects, Use, Block Node, and expansion respect floor
   assert.deepEqual([...blockedNodes(p,l,'target')],['3,3']);
   l.tiles['3,3']='stairs';assert.deepEqual([...blockedNodes(p,l,'target')],['3,3','4,3','5,3']);
   effect.behaviours=[{id:'expand',type:'expand',enabled:true,allowStacking:false}];
+  l.nodes.unshift('2,3');
   l.tiles['3,3']='floor';assert.equal(resolveTurn(p).project.levels[0].instances.length,3);
-  l.tiles['3,3']='stairs';assert.equal(resolveTurn(p).project.levels[0].instances.length,5);
+  l.tiles['3,3']='stairs';assert.equal(resolveTurn(p).project.levels[0].instances.length,2);
+  effect.behaviours[0].doNotExpandAcrossStairs=false;assert.equal(resolveTurn(p).project.levels[0].instances.length,5);
 });
 
 test('Use cannot send linked or tagged effects across a floor boundary without stairs',()=>{

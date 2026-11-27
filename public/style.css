@@ -54,15 +54,17 @@
 .board .use-object-badge{position:absolute;left:calc((var(--x) + .7)*var(--cell));top:calc((var(--y) - .12)*var(--cell));z-index:14;width:23px;height:23px;min-width:0;min-height:0;padding:0;display:grid;place-items:center;border:1px solid #bda675;border-radius:50%;background:#fff7dc;box-shadow:0 2px 6px #33281844;cursor:pointer;font-size:16px;line-height:1;transform:none}
 .board .use-object-badge:hover{background:#fff0b5;transform:translateY(-2px)}
 .board .use-object-badge:focus-visible{outline:3px solid var(--green);outline-offset:2px}
-.board .carried-object-badge{position:absolute;left:calc((var(--x) - .16)*var(--cell));top:calc((var(--y) - .18)*var(--cell));z-index:15;width:30px;height:30px;min-width:0;min-height:0;padding:3px;border:1px solid #bca57d;border-radius:6px;background:#fff7df;box-shadow:0 2px 5px #33281844;transform:none;cursor:pointer}
+/* Keep nested and inventory badges proportional when Fit shrinks the board. */
+.board .carried-object-badge{--badge-unit:min(1px,calc(var(--cell)/48));position:absolute;left:calc((var(--x) - .16)*var(--cell));top:calc((var(--y) - .18)*var(--cell));margin-left:calc(var(--badge-index,0)*32*var(--badge-unit));z-index:15;width:calc(30*var(--badge-unit));height:calc(30*var(--badge-unit));min-width:0;min-height:0;padding:calc(3*var(--badge-unit));border:1px solid #bca57d;border-radius:calc(6*var(--badge-unit));background:#fff7df;box-shadow:0 2px 5px #33281844;transform:none;cursor:pointer}
 .carried-object-badge svg{width:100%;height:100%;display:block}
 .board .nested-object-badge{pointer-events:none;cursor:inherit}
 .board .carried-object-badge.timed{border-color:#e89634;box-shadow:0 0 12px #ec9b4055}
 .board .carried-object-badge.last-turn{border-color:#d55037;background:#ffe0bd}
-.carried-object-badge .lifetime-count{position:absolute;right:-7px;top:-8px;min-width:18px;height:18px;padding:1px 3px;border-radius:9px;background:#754119;color:#fff;font-size:12px;font-weight:700;line-height:16px;text-align:center}
+.carried-object-badge .lifetime-count{position:absolute;right:calc(-7*var(--badge-unit));top:calc(-8*var(--badge-unit));min-width:calc(18*var(--badge-unit));height:calc(18*var(--badge-unit));padding:calc(1*var(--badge-unit)) calc(3*var(--badge-unit));border-radius:calc(9*var(--badge-unit));background:#754119;color:#fff;font-size:calc(12*var(--badge-unit));font-weight:700;line-height:calc(16*var(--badge-unit));text-align:center}
 .carried-object-badge.last-turn .lifetime-count{background:#b53928}
 .lifetime-bar{position:absolute;left:2px;right:2px;bottom:1px;height:3px;background:#d9c5a3;border-radius:2px;overflow:hidden}
 .lifetime-bar:after{content:'';display:block;width:calc(var(--remaining)*100%);height:100%;background:#d57624}
+.carried-object-badge .lifetime-bar{left:calc(2*var(--badge-unit));right:calc(2*var(--badge-unit));bottom:var(--badge-unit);height:calc(3*var(--badge-unit))}
 .carried-object-badge:focus-visible{outline:3px solid var(--green);outline-offset:2px}
 .inventory-carry-status{display:block;color:#c48238;font-size:.769231rem;margin-top:3px}
 .turn-resolution-log .turn-feedback{display:block;margin-top:5px;color:var(--muted)}

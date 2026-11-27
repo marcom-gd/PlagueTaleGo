@@ -3,7 +3,7 @@ import {clone, uid, validateProject, descendants, isParameter, isState, applyAct
 export const levelFileFormat = 'plague-tale-go-levels';
 const nameKey = name => name.trim().toLowerCase();
 const referenceKeys = new Set(['assetId','parentId','parameterId','definitionId','stateKey','spawnAssetId','throwAssetId','targetAssetId','targetInstanceId','patrolId','assignedId','behaviourId','sourceId','levelId','instanceId']);
-const referenceArrays = new Set(['tags','overlapAssetIds','overlapTagIds','eligibleAssetIds','usableAssetIds','blockAssetIds','throwTargetAssetIds','assetIds','hitAssetIds','distractAssetIds','eligibleTagIds','usableTagIds','blockTagIds','targetTagIds','removedAssetIds','instanceIds','behaviourOrder','tagIds']);
+const referenceArrays = new Set(['tags','overlapAssetIds','overlapTagIds','eligibleAssetIds','usableAssetIds','blockAssetIds','throwTargetAssetIds','assetIds','hitAssetIds','distractAssetIds','beamParameterIds','eligibleTagIds','usableTagIds','blockTagIds','targetTagIds','removedAssetIds','instanceIds','behaviourOrder','tagIds']);
 const canonical = value => JSON.stringify(sort(value));
 function sort(value) {
   if(Array.isArray(value))return value.map(sort);

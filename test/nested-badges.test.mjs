@@ -28,8 +28,8 @@ test('nested objects get carried-style icons per placement, excluding state fold
   assert.equal((html.match(/data-nested-object="lantern"/g)||[]).length,1);
   assert.match(html,/data-nested-object="coin"/);
   for(const id of ['alive','carrying','lit','light'])assert.ok(!html.includes(`data-nested-object="${id}"`));
-  assert.match(html,/--x:2;--y:3;margin-left:0px/);
-  assert.match(html,/--x:5;--y:3;margin-left:32px/);
+  assert.match(html,/--x:2;--y:3;--badge-index:0/);
+  assert.match(html,/--x:5;--y:3;--badge-index:1/);
   assert.ok(!html.includes('data-drop-carried'));
   assert.deepEqual(f,before);
 });
@@ -38,7 +38,7 @@ test('nested icons follow ancestor states, removals, movement and detached place
   const f=fixture(),owner=f.level.instances[0];
   owner.stateOverrides={alive:false};assert.ok(!badges(f).includes('data-nested-object="lantern"'));
   delete owner.stateOverrides;owner.removedAssetIds=['lantern'];assert.ok(!badges(f).includes('data-nested-object="lantern"'));
-  owner.removedAssetIds=['pouch'];assert.ok(!badges(f).includes('--x:2;--y:3;margin-left:32px'));
+  owner.removedAssetIds=['pouch'];assert.ok(!badges(f).includes('--x:2;--y:3;--badge-index:1'));
   delete owner.removedAssetIds;owner.x=7;owner.y=6;assert.match(badges(f),/--x:7;--y:6/);
   f.project.assets.find(a=>a.id==='carrying').enabled=false;
   f.level.instances=[{...owner,assetId:'lantern',detached:true}];
@@ -62,10 +62,10 @@ test('inventory badges share the row after nested objects and retain drop and co
     lifetimeProgress:[{remaining:1,total:3}]
   }]}];
   let html=carriedBadges(f.project,f.level,inventory,art,esc);
-  assert.match(html,/data-drop-carried="held"/);assert.match(html,/margin-left:96px/);
+  assert.match(html,/data-drop-carried="held"/);assert.match(html,/--badge-index:3/);
   assert.match(html,/last-turn/);assert.match(html,/1 of 3 turns remaining/);
   f.level.instances[0].stateOverrides={carrying:false};
-  html=carriedBadges(f.project,f.level,inventory,art,esc);assert.match(html,/margin-left:64px/);
+  html=carriedBadges(f.project,f.level,inventory,art,esc);assert.match(html,/--badge-index:2/);
 });
 
 test('Class B guard has one Lantern badge that switches between Lit and Break state artwork',async()=>{

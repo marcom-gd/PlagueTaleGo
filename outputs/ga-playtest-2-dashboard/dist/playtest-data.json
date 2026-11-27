@@ -1,0 +1,2535 @@
+{
+  "title": "Plague Tale GO",
+  "room": "ga-playtest-2",
+  "date": "27 November 2026",
+  "source": "User Test Feedback / ga-playtest-2",
+  "players": [
+    {
+      "key": "P01",
+      "name": "Sellyvan",
+      "color": "#3975b9",
+      "avatar": "agent47",
+      "startedAt": "2026-11-27T15:17:53.866Z",
+      "completed": 15,
+      "available": 15
+    },
+    {
+      "key": "P02",
+      "name": "YONI ROMO",
+      "color": "#000000",
+      "avatar": "agent47",
+      "startedAt": "2026-11-27T15:17:52.784Z",
+      "completed": 15,
+      "available": 15
+    },
+    {
+      "key": "P03",
+      "name": "Amael francois",
+      "color": "#4c813b",
+      "avatar": "rat",
+      "startedAt": "2026-11-27T15:18:03.522Z",
+      "completed": 15,
+      "available": 15
+    },
+    {
+      "key": "P04",
+      "name": "May",
+      "color": "#b24c75",
+      "avatar": "lara",
+      "startedAt": "2026-11-27T15:18:35.147Z",
+      "completed": 15,
+      "available": 15
+    },
+    {
+      "key": "P05",
+      "name": "Strom",
+      "color": "#a555a0",
+      "avatar": "dog",
+      "startedAt": "2026-11-27T15:18:55.305Z",
+      "completed": 15,
+      "available": 15
+    },
+    {
+      "key": "P06",
+      "name": "Supa",
+      "color": "#c65c4c",
+      "avatar": "cat",
+      "startedAt": "2026-11-27T15:17:56.813Z",
+      "completed": 15,
+      "available": 15
+    },
+    {
+      "key": "P07",
+      "name": "Marco",
+      "color": "#b17a24",
+      "avatar": "rat",
+      "startedAt": "2026-11-27T15:17:39.465Z",
+      "completed": 1,
+      "available": 15
+    },
+    {
+      "key": "P08",
+      "name": "TOUYE",
+      "color": "#6f69bd",
+      "avatar": "duck",
+      "startedAt": "2026-11-27T15:19:22.719Z",
+      "completed": 15,
+      "available": 15
+    },
+    {
+      "key": "P09",
+      "name": "Nathan.P",
+      "color": "#6f69bd",
+      "avatar": "rat",
+      "startedAt": "2026-11-27T15:17:50.335Z",
+      "completed": 15,
+      "available": 15
+    }
+  ],
+  "levels": [
+    {
+      "key": "L01",
+      "name": "Level 1 Validé",
+      "order": 1,
+      "base": 1,
+      "variant": "V"
+    },
+    {
+      "key": "L02",
+      "name": "Level_1_B",
+      "order": 2,
+      "base": 1,
+      "variant": "B"
+    },
+    {
+      "key": "L03",
+      "name": "Level 2 Validé",
+      "order": 3,
+      "base": 2,
+      "variant": "V"
+    },
+    {
+      "key": "L04",
+      "name": "Level_2_B",
+      "order": 4,
+      "base": 2,
+      "variant": "B"
+    },
+    {
+      "key": "L05",
+      "name": "Level 3 Validé",
+      "order": 5,
+      "base": 3,
+      "variant": "V"
+    },
+    {
+      "key": "L06",
+      "name": "Level_3_B",
+      "order": 6,
+      "base": 3,
+      "variant": "B"
+    },
+    {
+      "key": "L07",
+      "name": "Level 4 Validé",
+      "order": 7,
+      "base": 4,
+      "variant": "V"
+    },
+    {
+      "key": "L08",
+      "name": "Level 5 Validé",
+      "order": 8,
+      "base": 5,
+      "variant": "V"
+    },
+    {
+      "key": "L09",
+      "name": "Level_5_B",
+      "order": 9,
+      "base": 5,
+      "variant": "B"
+    },
+    {
+      "key": "L10",
+      "name": "Level 6 Validé",
+      "order": 10,
+      "base": 6,
+      "variant": "V"
+    },
+    {
+      "key": "L11",
+      "name": "Level_6_B",
+      "order": 11,
+      "base": 6,
+      "variant": "B"
+    },
+    {
+      "key": "L12",
+      "name": "Level 7 Validé",
+      "order": 12,
+      "base": 7,
+      "variant": "V"
+    },
+    {
+      "key": "L13",
+      "name": "Level_7_B",
+      "order": 13,
+      "base": 7,
+      "variant": "B"
+    },
+    {
+      "key": "L14",
+      "name": "Level 8 Validé",
+      "order": 14,
+      "base": 8,
+      "variant": "V"
+    },
+    {
+      "key": "L15",
+      "name": "Level_9_b",
+      "order": 15,
+      "base": 9,
+      "variant": "B"
+    }
+  ],
+  "responses": [
+    {
+      "player": "P01",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:19:54.618Z",
+      "experience": 1,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "rien",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 36
+    },
+    {
+      "player": "P01",
+      "level": "L02",
+      "savedAt": "2026-11-27T15:20:21.232Z",
+      "experience": 1,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 8,
+      "elapsedSeconds": 13
+    },
+    {
+      "player": "P01",
+      "level": "L03",
+      "savedAt": "2026-11-27T15:21:41.528Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 1,
+      "emotions": [
+        "surprised"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 42
+    },
+    {
+      "player": "P01",
+      "level": "L04",
+      "savedAt": "2026-11-27T15:22:45.809Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 36
+    },
+    {
+      "player": "P01",
+      "level": "L05",
+      "savedAt": "2026-11-27T15:25:12.168Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "la sortie est un mur",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 91
+    },
+    {
+      "player": "P01",
+      "level": "L06",
+      "savedAt": "2026-11-27T15:26:48.921Z",
+      "experience": 3,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": false,
+      "friction": "on peut attirer les deux gardes facilement et finir le niveau trop facilement",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 7,
+      "elapsedSeconds": 32
+    },
+    {
+      "player": "P01",
+      "level": "L07",
+      "savedAt": "2026-11-27T15:29:05.515Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 5,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "petit niveau mais force a réfléchir",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 15,
+      "elapsedSeconds": 71
+    },
+    {
+      "player": "P01",
+      "level": "L08",
+      "savedAt": "2026-11-27T15:32:19.754Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "puzzle simple pour apprendre de nouvelle mecanique",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 37,
+      "elapsedSeconds": 140
+    },
+    {
+      "player": "P01",
+      "level": "L09",
+      "savedAt": "2026-11-27T15:35:54.282Z",
+      "experience": 2,
+      "difficulty": 2,
+      "personalChallenge": 1,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": false,
+      "friction": "le premier niveau 5 est mieux il y a un debut de compréhension de différent etage plus les mecanique de torche et de brasero et la difficulté et mieux adapter je trouve",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 106
+    },
+    {
+      "player": "P01",
+      "level": "L10",
+      "savedAt": "2026-11-27T15:41:20.941Z",
+      "experience": 5,
+      "difficulty": 5,
+      "personalChallenge": 6,
+      "emotions": [
+        "surprised"
+      ],
+      "noFriction": false,
+      "friction": "le debut de la difficulté",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 17,
+      "elapsedSeconds": 258
+    },
+    {
+      "player": "P01",
+      "level": "L11",
+      "savedAt": "2026-11-27T15:44:26.910Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "niveau trop simple, ce qui contraste avec le niveau précédant.",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 71
+    },
+    {
+      "player": "P01",
+      "level": "L12",
+      "savedAt": "2026-11-27T15:46:50.342Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 35,
+      "elapsedSeconds": 96
+    },
+    {
+      "player": "P01",
+      "level": "L13",
+      "savedAt": "2026-11-27T15:50:27.695Z",
+      "experience": 1,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": false,
+      "friction": "beaucoup trop simple, comparait au premier niveau 7 et moins explicite.\nle premier niveau induisait avec c'est grand couloir la mecanique des spotlight",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 37
+    },
+    {
+      "player": "P01",
+      "level": "L14",
+      "savedAt": "2026-11-27T15:52:29.722Z",
+      "experience": 4,
+      "difficulty": 4,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "niveau tres facile mais etre poursuivi par les rats rend le niveau original",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 62
+    },
+    {
+      "player": "P01",
+      "level": "L15",
+      "savedAt": "2026-11-27T15:55:50.951Z",
+      "experience": 2,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": false,
+      "friction": "les torches permette de faire 4 cases et je trouve que ça laisse beaucoup trop le temps au joueur de s'échapper comme dans ce niveau.",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 21,
+      "elapsedSeconds": 75
+    },
+    {
+      "player": "P02",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:19:05.853Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "kinda easy",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 21
+    },
+    {
+      "player": "P02",
+      "level": "L02",
+      "savedAt": "2026-11-27T15:20:29.252Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "kinda easy",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 8,
+      "elapsedSeconds": 52
+    },
+    {
+      "player": "P02",
+      "level": "L03",
+      "savedAt": "2026-11-27T15:22:54.823Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "surprised",
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "that was good",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 50
+    },
+    {
+      "player": "P02",
+      "level": "L04",
+      "savedAt": "2026-11-27T15:24:10.534Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "j'arrete de parler en anglais c'est trop dur. Mais pas mal, bon niveau qui apprend a etre patient (en tout cas c'est mon cas)",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 18,
+      "elapsedSeconds": 29
+    },
+    {
+      "player": "P02",
+      "level": "L05",
+      "savedAt": "2026-11-27T15:27:16.222Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "excited",
+        "eureka",
+        "surprised",
+        "goodTime",
+        "proud"
+      ],
+      "noFriction": false,
+      "friction": "franchement bien, j'ai appris a utiliser la caillasse pour m'en sortir convenablement",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 130
+    },
+    {
+      "player": "P02",
+      "level": "L06",
+      "savedAt": "2026-11-27T15:28:10.043Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "j'ai fait ca au felling et c'est passé donc c'etait cool",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 10,
+      "elapsedSeconds": 30
+    },
+    {
+      "player": "P02",
+      "level": "L07",
+      "savedAt": "2026-11-27T15:28:55.251Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "pas mal, encore au feeling sans trop reflechir",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 13
+    },
+    {
+      "player": "P02",
+      "level": "L08",
+      "savedAt": "2026-11-27T15:33:01.303Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "eureka",
+        "surprised",
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "bon apprentissage des batons et du feu, contre intuitif de devoir faire un retour donc c'est cool 😎",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 37,
+      "elapsedSeconds": 188
+    },
+    {
+      "player": "P02",
+      "level": "L09",
+      "savedAt": "2026-11-27T15:34:02.768Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 5,
+      "emotions": [
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "meme exercice que le precedent, donc cool et assez simple",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 21,
+      "elapsedSeconds": 29
+    },
+    {
+      "player": "P02",
+      "level": "L10",
+      "savedAt": "2026-11-27T15:37:09.960Z",
+      "experience": 4,
+      "difficulty": 4,
+      "personalChallenge": 6,
+      "emotions": [
+        "eureka",
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "de la reflexion est necessaire au succes de ce niveau, j'apprecie",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 15,
+      "elapsedSeconds": 152
+    },
+    {
+      "player": "P02",
+      "level": "L11",
+      "savedAt": "2026-11-27T15:39:06.551Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "au feeling et c'est passé, satisfaisant de tuer les gardes",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 20,
+      "elapsedSeconds": 80
+    },
+    {
+      "player": "P02",
+      "level": "L12",
+      "savedAt": "2026-11-27T15:41:59.983Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "eureka",
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": false,
+      "friction": "j'ai passé un bon moment, je pense qu'il etait assez simple mais j'ai passé 3 bonnes minutes a etre bloqué au milieu comme un couillon",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 63,
+      "elapsedSeconds": 132
+    },
+    {
+      "player": "P02",
+      "level": "L13",
+      "savedAt": "2026-11-27T15:42:45.883Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime",
+        "bored"
+      ],
+      "noFriction": false,
+      "friction": "un peu simple par rapport au precedent",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 25
+    },
+    {
+      "player": "P02",
+      "level": "L14",
+      "savedAt": "2026-11-27T15:44:43.843Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "surprised",
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "fais au feeling, et ca c'est bien passé. Ca m'a fait rire de courir avec des rats derriere",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 53
+    },
+    {
+      "player": "P02",
+      "level": "L15",
+      "savedAt": "2026-11-27T15:46:42.030Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "je comprends pas trop l'interet de la lumiere de gauche, je suis passé sans l'utiliser",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 38,
+      "elapsedSeconds": 89
+    },
+    {
+      "player": "P03",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:19:37.887Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 10
+    },
+    {
+      "player": "P03",
+      "level": "L02",
+      "savedAt": "2026-11-27T15:19:54.234Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 8,
+      "elapsedSeconds": 9
+    },
+    {
+      "player": "P03",
+      "level": "L03",
+      "savedAt": "2026-11-27T15:21:01.393Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 51
+    },
+    {
+      "player": "P03",
+      "level": "L04",
+      "savedAt": "2026-11-27T15:21:33.882Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 24
+    },
+    {
+      "player": "P03",
+      "level": "L05",
+      "savedAt": "2026-11-27T15:24:13.281Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 140
+    },
+    {
+      "player": "P03",
+      "level": "L06",
+      "savedAt": "2026-11-27T15:24:49.748Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 7,
+      "elapsedSeconds": 23
+    },
+    {
+      "player": "P03",
+      "level": "L07",
+      "savedAt": "2026-11-27T15:26:02.865Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 55
+    },
+    {
+      "player": "P03",
+      "level": "L08",
+      "savedAt": "2026-11-27T15:28:29.381Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 8,
+      "emotions": [
+        "eureka",
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 51,
+      "elapsedSeconds": 124
+    },
+    {
+      "player": "P03",
+      "level": "L09",
+      "savedAt": "2026-11-27T15:29:12.180Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 28
+    },
+    {
+      "player": "P03",
+      "level": "L10",
+      "savedAt": "2026-11-27T15:33:19.117Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 7,
+      "emotions": [
+        "eureka",
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "Hugo se ramasse lui meme",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 45,
+      "elapsedSeconds": 222
+    },
+    {
+      "player": "P03",
+      "level": "L11",
+      "savedAt": "2026-11-27T15:37:50.814Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 7,
+      "emotions": [
+        "eureka",
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "a des moments les gardes prennent un tour de plus a mourir des rats",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 26,
+      "elapsedSeconds": 122
+    },
+    {
+      "player": "P03",
+      "level": "L12",
+      "savedAt": "2026-11-27T15:39:47.023Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 7,
+      "emotions": [
+        "eureka",
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 41,
+      "elapsedSeconds": 101
+    },
+    {
+      "player": "P03",
+      "level": "L13",
+      "savedAt": "2026-11-27T15:40:19.806Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 23
+    },
+    {
+      "player": "P03",
+      "level": "L14",
+      "savedAt": "2026-11-27T15:41:17.196Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime",
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 33
+    },
+    {
+      "player": "P03",
+      "level": "L15",
+      "savedAt": "2026-11-27T15:42:32.358Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 32,
+      "elapsedSeconds": 66
+    },
+    {
+      "player": "P04",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:19:31.890Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 28
+    },
+    {
+      "player": "P04",
+      "level": "L02",
+      "savedAt": "2026-11-27T15:19:57.700Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 8,
+      "elapsedSeconds": 15
+    },
+    {
+      "player": "P04",
+      "level": "L03",
+      "savedAt": "2026-11-27T15:21:51.289Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 75
+    },
+    {
+      "player": "P04",
+      "level": "L04",
+      "savedAt": "2026-11-27T15:22:28.313Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 27
+    },
+    {
+      "player": "P04",
+      "level": "L05",
+      "savedAt": "2026-11-27T15:24:02.282Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 1,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 75
+    },
+    {
+      "player": "P04",
+      "level": "L06",
+      "savedAt": "2026-11-27T15:25:31.478Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 18,
+      "elapsedSeconds": 77
+    },
+    {
+      "player": "P04",
+      "level": "L07",
+      "savedAt": "2026-11-27T15:26:37.498Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 10,
+      "elapsedSeconds": 56
+    },
+    {
+      "player": "P04",
+      "level": "L08",
+      "savedAt": "2026-11-27T15:34:06.008Z",
+      "experience": 4,
+      "difficulty": 4,
+      "personalChallenge": 5,
+      "emotions": [
+        "eureka"
+      ],
+      "noFriction": false,
+      "friction": "L'utilisation de la torche m'a un peu perturbée mais je pense que c'est uniquement lié à l'UI",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 35,
+      "elapsedSeconds": 395
+    },
+    {
+      "player": "P04",
+      "level": "L09",
+      "savedAt": "2026-11-27T15:34:50.302Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 36
+    },
+    {
+      "player": "P04",
+      "level": "L10",
+      "savedAt": "2026-11-27T15:42:52.321Z",
+      "experience": 3,
+      "difficulty": 4,
+      "personalChallenge": 7,
+      "emotions": [
+        "confused"
+      ],
+      "noFriction": false,
+      "friction": "J'ai eu du mal à comprendre que j'avais une range large pour lancer ma pierre et que je pouvais attaquer le garde directement avec la pierre pour casser sa lampe",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 19,
+      "elapsedSeconds": 428
+    },
+    {
+      "player": "P04",
+      "level": "L11",
+      "savedAt": "2026-11-27T15:45:41.998Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 26,
+      "elapsedSeconds": 160
+    },
+    {
+      "player": "P04",
+      "level": "L12",
+      "savedAt": "2026-11-27T15:50:24.653Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "eureka"
+      ],
+      "noFriction": false,
+      "friction": "j'ai mis un peu de temps a comprendre qu'on pouvait tourner la lumière",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 33,
+      "elapsedSeconds": 258
+    },
+    {
+      "player": "P04",
+      "level": "L13",
+      "savedAt": "2026-11-27T15:51:04.490Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 31
+    },
+    {
+      "player": "P04",
+      "level": "L14",
+      "savedAt": "2026-11-27T15:52:59.504Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 4,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 105
+    },
+    {
+      "player": "P04",
+      "level": "L15",
+      "savedAt": "2026-11-27T15:54:13.168Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 20,
+      "elapsedSeconds": 64
+    },
+    {
+      "player": "P05",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:19:47.423Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "confused",
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 17
+    },
+    {
+      "player": "P05",
+      "level": "L02",
+      "savedAt": "2026-11-27T15:20:15.950Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 8,
+      "elapsedSeconds": 11
+    },
+    {
+      "player": "P05",
+      "level": "L03",
+      "savedAt": "2026-11-27T15:22:14.791Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "confused",
+        "bored"
+      ],
+      "noFriction": false,
+      "friction": "je m attendais pas que je sois attrapé en étant juste a coté et pas devant",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 52
+    },
+    {
+      "player": "P05",
+      "level": "L04",
+      "savedAt": "2026-11-27T15:22:51.985Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 19
+    },
+    {
+      "player": "P05",
+      "level": "L05",
+      "savedAt": "2026-11-27T15:24:24.820Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime",
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 18,
+      "elapsedSeconds": 66
+    },
+    {
+      "player": "P05",
+      "level": "L06",
+      "savedAt": "2026-11-27T15:24:54.044Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 1,
+      "emotions": [
+        "goodTime",
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 7,
+      "elapsedSeconds": 15
+    },
+    {
+      "player": "P05",
+      "level": "L07",
+      "savedAt": "2026-11-27T15:26:23.095Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime",
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 10,
+      "elapsedSeconds": 58
+    },
+    {
+      "player": "P05",
+      "level": "L08",
+      "savedAt": "2026-11-27T15:32:19.379Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime",
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 29,
+      "elapsedSeconds": 312
+    },
+    {
+      "player": "P05",
+      "level": "L09",
+      "savedAt": "2026-11-27T15:32:54.740Z",
+      "experience": 2,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime",
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 23,
+      "elapsedSeconds": 25
+    },
+    {
+      "player": "P05",
+      "level": "L10",
+      "savedAt": "2026-11-27T15:41:46.371Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "eureka"
+      ],
+      "noFriction": false,
+      "friction": "bien pour le fait que l on peux casse les lanterne des gardes",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 21,
+      "elapsedSeconds": 423
+    },
+    {
+      "player": "P05",
+      "level": "L11",
+      "savedAt": "2026-11-27T15:42:30.637Z",
+      "experience": 2,
+      "difficulty": 3,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 18,
+      "elapsedSeconds": 36
+    },
+    {
+      "player": "P05",
+      "level": "L12",
+      "savedAt": "2026-11-27T15:44:01.801Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "bonne mecanique",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 33,
+      "elapsedSeconds": 60
+    },
+    {
+      "player": "P05",
+      "level": "L13",
+      "savedAt": "2026-11-27T15:45:39.371Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 46
+    },
+    {
+      "player": "P05",
+      "level": "L14",
+      "savedAt": "2026-11-27T15:46:10.036Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 2,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 22
+    },
+    {
+      "player": "P05",
+      "level": "L15",
+      "savedAt": "2026-11-27T15:47:13.210Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 27,
+      "elapsedSeconds": 50
+    },
+    {
+      "player": "P06",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:19:48.715Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "c'est une bonne base",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 45
+    },
+    {
+      "player": "P06",
+      "level": "L02",
+      "savedAt": "2026-11-27T15:20:18.129Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "easy",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 8,
+      "elapsedSeconds": 16
+    },
+    {
+      "player": "P06",
+      "level": "L03",
+      "savedAt": "2026-11-27T15:21:18.492Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "voilà facile",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 34
+    },
+    {
+      "player": "P06",
+      "level": "L04",
+      "savedAt": "2026-11-27T15:21:58.291Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "facile",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 18,
+      "elapsedSeconds": 28
+    },
+    {
+      "player": "P06",
+      "level": "L05",
+      "savedAt": "2026-11-27T15:23:50.181Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "Trop simple",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 24,
+      "elapsedSeconds": 90
+    },
+    {
+      "player": "P06",
+      "level": "L06",
+      "savedAt": "2026-11-27T15:24:23.787Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "easy peasy",
+      "mode": "userTest",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 7,
+      "elapsedSeconds": 22
+    },
+    {
+      "player": "P06",
+      "level": "L07",
+      "savedAt": "2026-11-27T15:27:14.387Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 1,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "J'avais pacs compris qu'on pouvait attaquer les gardes lol",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 51,
+      "elapsedSeconds": 134
+    },
+    {
+      "player": "P06",
+      "level": "L08",
+      "savedAt": "2026-11-27T15:33:36.110Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 5,
+      "emotions": [
+        "confused"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "La main à la place de la flamme aled je comprenais pas grand chose-",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 43,
+      "elapsedSeconds": 346
+    },
+    {
+      "player": "P06",
+      "level": "L09",
+      "savedAt": "2026-11-27T15:34:40.235Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 4,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "mtn que j'ai compris qu'on peut allumer les brasiers (qui se trouvent sous les rats) c'est facile",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 29
+    },
+    {
+      "player": "P06",
+      "level": "L10",
+      "savedAt": "2026-11-27T15:38:24.424Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 5,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "bah c'est ok même pas j'ai pas tt capté",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 21,
+      "elapsedSeconds": 200
+    },
+    {
+      "player": "P06",
+      "level": "L11",
+      "savedAt": "2026-11-27T15:39:03.722Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 3,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "easy",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 30
+    },
+    {
+      "player": "P06",
+      "level": "L12",
+      "savedAt": "2026-11-27T15:40:33.855Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "plutot cool",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 33,
+      "elapsedSeconds": 77
+    },
+    {
+      "player": "P06",
+      "level": "L13",
+      "savedAt": "2026-11-27T15:41:09.579Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "facile de fou lui",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 22
+    },
+    {
+      "player": "P06",
+      "level": "L14",
+      "savedAt": "2026-11-27T15:49:09.990Z",
+      "experience": 2,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "frustrated"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "Le niveau est fun quand c'est pas bugué",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 17,
+      "elapsedSeconds": 456
+    },
+    {
+      "player": "P06",
+      "level": "L15",
+      "savedAt": "2026-11-27T15:51:33.635Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "easy !",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 24,
+      "elapsedSeconds": 131
+    },
+    {
+      "player": "P07",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:27:16.268Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 5,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 1,
+      "elapsedSeconds": 554
+    },
+    {
+      "player": "P08",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:20:36.057Z",
+      "experience": 3,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "confused"
+      ],
+      "noFriction": false,
+      "friction": "the ennemy disappeared",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 33
+    },
+    {
+      "player": "P08",
+      "level": "L02",
+      "savedAt": "2026-11-27T15:21:27.863Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 10,
+      "elapsedSeconds": 23
+    },
+    {
+      "player": "P08",
+      "level": "L03",
+      "savedAt": "2026-11-27T15:22:26.396Z",
+      "experience": 4,
+      "difficulty": 3,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 35
+    },
+    {
+      "player": "P08",
+      "level": "L04",
+      "savedAt": "2026-11-27T15:23:13.327Z",
+      "experience": 4,
+      "difficulty": 4,
+      "personalChallenge": 4,
+      "emotions": [
+        "relaxed"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 10,
+      "elapsedSeconds": 23
+    },
+    {
+      "player": "P08",
+      "level": "L05",
+      "savedAt": "2026-11-27T15:25:22.767Z",
+      "experience": 2,
+      "difficulty": 4,
+      "personalChallenge": 4,
+      "emotions": [
+        "frustrated"
+      ],
+      "noFriction": false,
+      "friction": "the range to throw a rock is unclear",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 88
+    },
+    {
+      "player": "P08",
+      "level": "L06",
+      "savedAt": "2026-11-27T15:27:33.808Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "confused"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 7,
+      "elapsedSeconds": 73
+    },
+    {
+      "player": "P08",
+      "level": "L07",
+      "savedAt": "2026-11-27T15:28:18.713Z",
+      "experience": 4,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 8,
+      "elapsedSeconds": 26
+    },
+    {
+      "player": "P08",
+      "level": "L08",
+      "savedAt": "2026-11-27T15:32:56.084Z",
+      "experience": 2,
+      "difficulty": 5,
+      "personalChallenge": 8,
+      "emotions": [
+        "frustrated"
+      ],
+      "noFriction": false,
+      "friction": "did not see the brasero",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 39,
+      "elapsedSeconds": 239
+    },
+    {
+      "player": "P08",
+      "level": "L09",
+      "savedAt": "2026-11-27T15:34:17.759Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 17,
+      "elapsedSeconds": 36
+    },
+    {
+      "player": "P08",
+      "level": "L10",
+      "savedAt": "2026-11-27T15:40:16.020Z",
+      "experience": 2,
+      "difficulty": 4,
+      "personalChallenge": 9,
+      "emotions": [
+        "confused"
+      ],
+      "noFriction": false,
+      "friction": "The range to hit an ennemy is unclear",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 23,
+      "elapsedSeconds": 324
+    },
+    {
+      "player": "P08",
+      "level": "L11",
+      "savedAt": "2026-11-27T15:43:47.206Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "confused"
+      ],
+      "noFriction": false,
+      "friction": "bug, a guard disappeared",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 18,
+      "elapsedSeconds": 185
+    },
+    {
+      "player": "P08",
+      "level": "L12",
+      "savedAt": "2026-11-27T15:45:01.189Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "excited"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 33,
+      "elapsedSeconds": 58
+    },
+    {
+      "player": "P08",
+      "level": "L13",
+      "savedAt": "2026-11-27T15:45:37.511Z",
+      "experience": 3,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 26
+    },
+    {
+      "player": "P08",
+      "level": "L14",
+      "savedAt": "2026-11-27T15:49:58.475Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 15,
+      "elapsedSeconds": 214
+    },
+    {
+      "player": "P08",
+      "level": "L15",
+      "savedAt": "2026-11-27T15:52:40.074Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "excited"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 36,
+      "elapsedSeconds": 117
+    },
+    {
+      "player": "P09",
+      "level": "L01",
+      "savedAt": "2026-11-27T15:19:06.204Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "eureka",
+        "bored"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 9,
+      "elapsedSeconds": 37
+    },
+    {
+      "player": "P09",
+      "level": "L02",
+      "savedAt": "2026-11-27T15:19:20.085Z",
+      "experience": 5,
+      "difficulty": 1,
+      "personalChallenge": 1,
+      "emotions": [
+        "eureka"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 8,
+      "elapsedSeconds": 8
+    },
+    {
+      "player": "P09",
+      "level": "L03",
+      "savedAt": "2026-11-27T15:20:28.469Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "surprised"
+      ],
+      "noFriction": false,
+      "friction": "on ne sait pas vers ou va tourner le guards",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 16,
+      "elapsedSeconds": 44
+    },
+    {
+      "player": "P09",
+      "level": "L04",
+      "savedAt": "2026-11-27T15:21:01.238Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 2,
+      "emotions": [
+        "eureka"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 18
+    },
+    {
+      "player": "P09",
+      "level": "L05",
+      "savedAt": "2026-11-27T15:22:22.350Z",
+      "experience": 5,
+      "difficulty": 2,
+      "personalChallenge": 4,
+      "emotions": [
+        "excited",
+        "surprised"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 56
+    },
+    {
+      "player": "P09",
+      "level": "L06",
+      "savedAt": "2026-11-27T15:23:26.531Z",
+      "experience": 4,
+      "difficulty": 2,
+      "personalChallenge": 4,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": false,
+      "friction": "Pouvoir seulement lancer les pierre en ligne droite",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 41
+    },
+    {
+      "player": "P09",
+      "level": "L07",
+      "savedAt": "2026-11-27T15:25:01.091Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 5,
+      "emotions": [
+        "confused"
+      ],
+      "noFriction": false,
+      "friction": "on peu aller a la destination ou se trouve le garde car il va se deplacer aprés notre mouvement",
+      "thoughts": "",
+      "mode": "sandbox",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 26,
+      "elapsedSeconds": 53
+    },
+    {
+      "player": "P09",
+      "level": "L08",
+      "savedAt": "2026-11-27T15:27:18.540Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "excited",
+        "eureka"
+      ],
+      "noFriction": false,
+      "friction": "Bonne introduction des rats",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": true,
+      "completion": "automatic",
+      "turns": 37,
+      "elapsedSeconds": 110
+    },
+    {
+      "player": "P09",
+      "level": "L09",
+      "savedAt": "2026-11-27T15:28:01.883Z",
+      "experience": 3,
+      "difficulty": 2,
+      "personalChallenge": 3,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": false,
+      "friction": "bonne intro de la mechanic de brasero mais peut etre un peu simple",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 16
+    },
+    {
+      "player": "P09",
+      "level": "L10",
+      "savedAt": "2026-11-27T15:33:32.088Z",
+      "experience": 4,
+      "difficulty": 5,
+      "personalChallenge": 7,
+      "emotions": [
+        "eureka",
+        "confused"
+      ],
+      "noFriction": false,
+      "friction": "la premiere fois le guarde n'est pas aller sur la torche cassé",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 19,
+      "elapsedSeconds": 297
+    },
+    {
+      "player": "P09",
+      "level": "L11",
+      "savedAt": "2026-11-27T15:34:27.110Z",
+      "experience": 5,
+      "difficulty": 4,
+      "personalChallenge": 6,
+      "emotions": [
+        "goodTime"
+      ],
+      "noFriction": true,
+      "friction": "",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 24,
+      "elapsedSeconds": 43
+    },
+    {
+      "player": "P09",
+      "level": "L12",
+      "savedAt": "2026-11-27T15:35:46.083Z",
+      "experience": 5,
+      "difficulty": 4,
+      "personalChallenge": 6,
+      "emotions": [
+        "excited",
+        "eureka"
+      ],
+      "noFriction": false,
+      "friction": "bonne intro des different type de lumiere",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 37,
+      "elapsedSeconds": 61
+    },
+    {
+      "player": "P09",
+      "level": "L13",
+      "savedAt": "2026-11-27T15:36:18.955Z",
+      "experience": 3,
+      "difficulty": 1,
+      "personalChallenge": 3,
+      "emotions": [
+        "bored"
+      ],
+      "noFriction": false,
+      "friction": "trop simple",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 12,
+      "elapsedSeconds": 20
+    },
+    {
+      "player": "P09",
+      "level": "L14",
+      "savedAt": "2026-11-27T15:37:13.712Z",
+      "experience": 5,
+      "difficulty": 3,
+      "personalChallenge": 7,
+      "emotions": [
+        "excited",
+        "surprised"
+      ],
+      "noFriction": false,
+      "friction": "course poursuite amusante",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 11,
+      "elapsedSeconds": 35
+    },
+    {
+      "player": "P09",
+      "level": "L15",
+      "savedAt": "2026-11-27T15:38:27.859Z",
+      "experience": 3,
+      "difficulty": 3,
+      "personalChallenge": 6,
+      "emotions": [
+        "confused"
+      ],
+      "noFriction": false,
+      "friction": "Beaucoup d'espace inutiliser",
+      "thoughts": "",
+      "mode": "userTest",
+      "usedSandbox": false,
+      "completion": "automatic",
+      "turns": 26,
+      "elapsedSeconds": 52
+    }
+  ]
+}

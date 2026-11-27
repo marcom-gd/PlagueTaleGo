@@ -62,6 +62,7 @@ export function validateDistraction(value){
   for(const key of ['approachWait','returnWait'])if(value[key]!==undefined&&(!Number.isInteger(value[key])||value[key]<0||value[key]>maxWaitTurns))throw Error('Invalid distraction wait progress.');
   if(value.originFacing!==undefined&&![null,0,90,180,270].includes(value.originFacing)||value.originFacingInherited!==undefined&&typeof value.originFacingInherited!=='boolean')throw Error('Invalid distraction facing.');
   if(value.fixedDestination!==undefined&&typeof value.fixedDestination!=='boolean')throw Error('Invalid distraction destination.');
+  if(value.behaviourId!==undefined&&!key(value.behaviourId))throw Error('Invalid distraction behaviour.');
 }
 export function validateMoveTarget(target) {
   if(!target || !['self','position','object','tags'].includes(target.type))throw Error('Invalid move target.');
@@ -96,9 +97,12 @@ export function validateBehaviours(asset,isEffect) {
     if(b.type==='throwObject'&&(b.destroyOnHit!==undefined&&typeof b.destroyOnHit!=='boolean'||b.throwTargetAssetIds!==undefined&&!selection(b.throwTargetAssetIds)))throw Error('Invalid Throw Object hit settings.');
     if(b.type==='throwObject'){validateTargetConditions(b.throwTargetConditions);validateTargetGroups(b.throwTargetGroups);}
     if(b.type==='distraction'&&(!selection(b.hitAssetIds)||!Array.isArray(b.distractAssetIds)||!selection(b.distractAssetIds)||!Number.isInteger(b.steps)||b.steps<1||b.steps>100||typeof b.returnToStart!=='boolean'))throw Error('Choose Distraction trigger objects, attracted objects and 1–100 steps.');
+    if(b.type==='distraction'&&b.distractionTrigger!==undefined&&!['impact','stateChange'].includes(b.distractionTrigger))throw Error('Choose a Distraction trigger.');
+    if(b.type==='distraction'&&b.distractionTrigger==='stateChange'&&((b.distractTarget??'area')!=='area'||!Array.isArray(b.beamParameterIds)||!selection(b.beamParameterIds)))throw Error('State-change Distraction needs a parameter area and a spotlight beam parameter selection.');
     if(b.type==='distraction')for(const key of ['approachDelay','returnDelay'])if(b[key]!==undefined&&(!Number.isInteger(b[key])||b[key]<0||b[key]>maxWaitTurns))throw Error(`Distraction delays must be 0–${maxWaitTurns} turns.`);
     if(b.type==='distraction'&&(b.distractTarget!==undefined&&!['area','self'].includes(b.distractTarget)||b.destinationMode!==undefined&&!['hitObject','hitPosition','throwerPosition'].includes(b.destinationMode)))throw Error('Choose Distraction recipients and destination.');
     if(b.type==='expand'&&typeof b.allowStacking!=='boolean')throw Error('Invalid expansion stacking option.');
+    if(b.type==='expand'&&b.doNotExpandAcrossStairs!==undefined&&typeof b.doNotExpandAcrossStairs!=='boolean')throw Error('Invalid expansion stairs option.');
     if(b.type==='onHit'&&(!selection(b.hitAssetIds)||b.action!=='switchState'))throw Error('On Hit needs thrown objects and a Switch State action.');
     if(b.type==='applyEffect'||b.type==='useEffect'||b.type==='onHit'){
       if(!b.trigger&&!Object.hasOwn(effectActions,b.action))throw Error('Choose an effect action.');

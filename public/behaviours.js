@@ -2,7 +2,7 @@ import {clone,uid,validateProject,descendants,assetIsActive,isState,isParameter,
 import {eligibilityMode} from './behaviour-schema.js';
 import {matchesSelection,taggedObjects,nearestTaggedObject} from './object-selection.js';
 import {blockedNodes,effectOverlay,effectCanReach,placementBehaviours} from './behaviour-areas.js';
-import {floorBlocks} from './model.js';
+import {floorBlocks,isFloor} from './model.js';
 import {advanceDistractions} from './distraction.js';
 import {gameOutcome} from './game-outcomes.js';
 import {carriedItems,interactionOwners,pickUpObject,releaseMissingCarriers} from './carried-items.js';
@@ -222,7 +222,7 @@ function applyEffectTo(project,level,owner,b,targets,inventory,graveyard,events,
   for(const {instance:target,assetId} of eligible){
     const stored=inventory.find(s=>s.items.includes(target));
     if(!level.instances.includes(target)&&!stored||(assetId!==target.assetId&&!assetIsActive(project,assetId,target)))continue;
-    if(b.action==='switchState'){if(setState(project,target,b,assetId))count++;}
+    if(b.action==='switchState'){if(setState(project,target,b,assetId,inventory))count++;}
     if(b.action==='setMoveTarget'){
       target.moveTarget=b.moveTarget.type==='self'?{type:'object',id:owner.id}:clone(b.moveTarget);
       if(b.moveTarget.type==='object')target.moveTarget.id=resolveReference(level,owner,b.moveTarget.id);count++;
@@ -243,10 +243,32 @@ function applyEffectTo(project,level,owner,b,targets,inventory,graveyard,events,
   }
   pruneLinks(level);return count;
 }
+function expansionNodes(level,owner,cells,b){
+  const start=cell(owner),covered=new Set(cells.map(([x,y])=>`${x},${y}`)),reachable=new Set();
+  const avoidStairs=b.doNotExpandAcrossStairs!==false;
+  const height=isFloor(level.tiles[start])?level.tiles[start]:'floor';
+  if(!hasNode(level,start)||avoidStairs&&height==='stairs')return reachable;
+  const queue=[[start,height]],seen=new Set([`${start}|${height}`]);
+  reachable.add(start);
+  for(let n=0;n<queue.length;n++){
+    const [key,from]=queue[n];
+    for(const next of neighbours(key)){
+      if(!covered.has(next)||!nodesConnected(level,key,next))continue;
+      // Bare nodes retain the route's last height, so they cannot bridge floors.
+      const to=isFloor(level.tiles[next])?level.tiles[next]:from;
+      if(avoidStairs&&to==='stairs'||from!==to&&from!=='stairs'&&to!=='stairs')continue;
+      const state=`${next}|${to}`;
+      if(seen.has(state))continue;
+      seen.add(state);reachable.add(next);queue.push([next,to]);
+    }
+  }
+  return reachable;
+}
 function expand(project,level,owner,assigned,b,makeId,inventory=[],visualEffects=[]){
   const root=project.assets.find(a=>a.id===owner.assetId);let count=0;
-  for(const [x,y] of effectOverlay(project,root,assigned,owner,level,inventory).cells){
-    if(!hasNode(level,`${x},${y}`)||(!b.allowStacking&&level.instances.some(i=>i.assetId===root.id&&i.x===x&&i.y===y)))continue;
+  const cells=effectOverlay(project,root,assigned,owner,level,inventory).cells,reachable=expansionNodes(level,owner,cells,b);
+  for(const [x,y] of cells){
+    if(!reachable.has(`${x},${y}`)||(!b.allowStacking&&level.instances.some(i=>i.assetId===root.id&&i.x===x&&i.y===y)))continue;
     if(level.instances.length>=1000)throw Error('Expansion exceeds the 1,000 objects per level limit. Previous turn preserved.');
     const copy={...clone(owner),id:makeId(),x,y,locked:false};delete copy.carriedBy;delete copy.sourceLevelId;
     level.instances.push(copy);count++;
@@ -283,15 +305,19 @@ function waitTurn(instance,assignedId,b){
   return true;
 }
 
-// A fixed queue keeps new copies from acting until the following turn. Passive
-// blockers and clickable Use actions are evaluated from the current state.
+// New copies wait until the following turn for actions. Their area effects can
+// join later entries this turn; blockers and clickable Use actions stay live.
 export function resolveTurn(input,inventory=[],graveyard=[],makeId=uid,outcomeLevelId=input.levels[0]?.id,freshLifetimeKeys=[]){
   const project=clone(validateProject(input)),nextInventory=clone(inventory),nextGraveyard=clone(graveyard),log=[],events=[],visualEffects=[];
   const initialized=syncLifetimes(project,nextInventory);
   let outcome=gameOutcome(project,nextGraveyard,outcomeLevelId);
   const ranks=new Map(orderedBehaviours(project).map(({behaviour},n)=>[behaviour.id,n])),queue=[],waiting=new Set();
   const distracted=new Set(project.levels.flatMap(l=>l.instances.filter(i=>i.distraction).map(i=>i.id)));
-  for(const level of project.levels)log.push(...advanceDistractions(project,level,(instance,target,steps,exactDestination)=>move(project,level,instance,{type:'moveTo',target:'current',steps,exactDestination},project.assets.find(a=>a.id===instance.assetId),target,nextInventory),nextInventory));
+  for(const level of project.levels)for(const instance of level.instances)if(instance.distraction){
+    // Retain the originating behaviour even when impact disables its state.
+    // Legacy snapshots without that reference resolve after ordered actions.
+    queue.push({levelId:level.id,instanceId:instance.id,b:{id:instance.distraction.behaviourId,type:'distraction'},distraction:instance.distraction});
+  }
   for(const level of project.levels)for(const instance of interactionOwners(project,level,nextInventory)){
     pruneWaitProgress(project,nextInventory.flatMap(s=>s.items).find(i=>i.id===instance.id)||instance);
     for(const assigned of [project.assets.find(a=>a.id===instance.assetId),...descendants(project,instance.assetId)]){
@@ -299,17 +325,33 @@ export function resolveTurn(input,inventory=[],graveyard=[],makeId=uid,outcomeLe
     }
   }
   queue.sort((a,b)=>(ranks.get(a.b.id)??Infinity)-(ranks.get(b.b.id)??Infinity));
-  for(const entry of queue){
+  for(let index=0;index<queue.length;index++){
+    const entry=queue[index];
     const {b}=entry,level=project.levels.find(l=>l.id===entry.levelId),owner=interactionOwners(project,level,nextInventory).find(i=>i.id===entry.instanceId);
+    if(entry.distraction){
+      if(owner?.distraction===entry.distraction)log.push(...advanceDistractions(project,level,(instance,target,steps,exactDestination)=>move(project,level,instance,{type:'moveTo',target:'current',steps,exactDestination},project.assets.find(a=>a.id===instance.assetId),target,nextInventory),nextInventory,[owner]));
+      const detected=gameOutcome(project,nextGraveyard,outcomeLevelId);
+      if(detected&&(!outcome||detected.type==='gameOver'))outcome=detected;
+      continue;
+    }
     if(!b.enabled||!owner||!assetIsActive(project,entry.assignedId,owner))continue;
-    if(distracted.has(owner.id)&&['moveTo','moveAway'].includes(b.type))continue;
+    if((distracted.has(owner.id)||owner.distraction)&&['moveTo','moveAway'].includes(b.type))continue;
     if(waiting.has(owner.id)&&b.type!=='blockNode')continue;
     const root=project.assets.find(a=>a.id===owner.assetId),assigned=project.assets.find(a=>a.id===entry.assignedId);let count=0;
     const stored=nextInventory.flatMap(s=>s.items).find(i=>i.id===owner.id);
     if(b.type==='wait'&&waitTurn(stored||owner,assigned.id,b)){waiting.add(owner.id);count=1;}
     if(!owner.carriedBy&&(b.type==='moveTo'||b.type==='moveAway'))count=move(project,level,owner,b,root,undefined,nextInventory);
     if(b.type==='blockNode')count=parameterOverlay(project,root,assigned,owner,level).cells.filter(([x,y])=>hasNode(level,`${x},${y}`)).length;
-    if(b.type==='expand')count=expand(project,level,owner,assigned,b,makeId,nextInventory,visualEffects);
+    if(b.type==='expand'){
+      const start=level.instances.length;
+      count=expand(project,level,owner,assigned,b,makeId,nextInventory,visualEffects);
+      // A new rat's contact effect must be able to kill at its new cell before
+      // a later guard reaction. Copies still cannot move, spawn or expand again.
+      const effects=level.instances.slice(start).flatMap(instance=>placementBehaviours(project,instance)
+        .filter(({behaviour})=>behaviour.type==='applyEffect'&&(ranks.get(behaviour.id)??Infinity)>(ranks.get(b.id)??Infinity))
+        .map(({assigned,behaviour})=>({levelId:level.id,instanceId:instance.id,assignedId:assigned.id,b:behaviour})));
+      if(effects.length)queue.splice(index+1,queue.length-index-1,...queue.slice(index+1).concat(effects).sort((a,b)=>(ranks.get(a.b.id)??Infinity)-(ranks.get(b.b.id)??Infinity)));
+    }
     if(b.type==='spawn')count=spawn(project,level,owner,b,makeId,visualEffects);
     if(b.type==='addToTray'){
       let target=assigned;
@@ -333,7 +375,7 @@ export function resolveTurn(input,inventory=[],graveyard=[],makeId=uid,outcomeLe
 
 // A fixed impact queue prevents a newly enabled state from reacting to the
 // same hit again. Existing reactions follow the configured resolution order.
-export function resolveHitStates(project,level,projectile,hits){
+export function resolveHitStates(project,level,projectile,hits,inventory=[]){
   const ranks=new Map(orderedBehaviours(project).map(({behaviour},n)=>[behaviour.id,n]));
   const queue=hits.flatMap(receiver=>placementBehaviours(project,receiver)
     .filter(({behaviour:b})=>b.type==='onHit'&&matchesSelection(project,projectile,b.hitAssetIds))
@@ -342,7 +384,7 @@ export function resolveHitStates(project,level,projectile,hits){
   const log=[];
   for(const {receiver,assigned,b} of queue){
     if(!level.instances.includes(receiver)||!assetIsActive(project,assigned.id,receiver))continue;
-    log.push(logEntry(project,receiver,b,Number(setState(project,receiver,b))));
+    log.push(logEntry(project,receiver,b,Number(setState(project,receiver,b,receiver.assetId,inventory))));
   }
   return log;
 }

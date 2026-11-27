@@ -1,0 +1,438 @@
+{
+  "players": 9,
+  "responses": 121,
+  "levels": 15,
+  "summary": {
+    "n": 121,
+    "players": 9,
+    "sandbox": 30,
+    "manual": 0,
+    "noFriction": 72,
+    "comments": 64,
+    "experience": {
+      "n": 121,
+      "mean": 3.8512396694214877,
+      "median": 4,
+      "min": 1,
+      "max": 5,
+      "q1": 3,
+      "q3": 5
+    },
+    "difficulty": {
+      "n": 121,
+      "mean": 2.2231404958677685,
+      "median": 2,
+      "min": 1,
+      "max": 5,
+      "q1": 1,
+      "q3": 3
+    },
+    "personalChallenge": {
+      "n": 121,
+      "mean": 3.28099173553719,
+      "median": 3,
+      "min": 1,
+      "max": 9,
+      "q1": 1,
+      "q3": 4
+    },
+    "turns": {
+      "n": 121,
+      "mean": 18.03305785123967,
+      "median": 15,
+      "min": 1,
+      "max": 63,
+      "q1": 10,
+      "q3": 23
+    },
+    "elapsedSeconds": {
+      "n": 121,
+      "mean": 90.22314049586777,
+      "median": 52,
+      "min": 8,
+      "max": 554,
+      "q1": 28,
+      "q3": 105
+    },
+    "emotions": {
+      "frustrated": 3,
+      "excited": 7,
+      "eureka": 17,
+      "surprised": 9,
+      "confused": 11,
+      "goodTime": 51,
+      "proud": 1,
+      "relaxed": 38,
+      "bored": 22
+    }
+  },
+  "pairs": [
+    {
+      "base": 1,
+      "n": 8,
+      "pairs": [
+        {
+          "player": "P01",
+          "v": 1,
+          "b": 1,
+          "delta": 0
+        },
+        {
+          "player": "P02",
+          "v": 3,
+          "b": 4,
+          "delta": 1
+        },
+        {
+          "player": "P03",
+          "v": 5,
+          "b": 5,
+          "delta": 0
+        },
+        {
+          "player": "P04",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P05",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P06",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P08",
+          "v": 3,
+          "b": 3,
+          "delta": 0
+        },
+        {
+          "player": "P09",
+          "v": 5,
+          "b": 5,
+          "delta": 0
+        }
+      ],
+      "v": 3.625,
+      "b": 3.75,
+      "delta": 0.125,
+      "medianDelta": 0,
+      "higher": 1,
+      "equal": 7,
+      "lower": 0
+    },
+    {
+      "base": 2,
+      "n": 8,
+      "pairs": [
+        {
+          "player": "P01",
+          "v": 3,
+          "b": 3,
+          "delta": 0
+        },
+        {
+          "player": "P02",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P03",
+          "v": 5,
+          "b": 5,
+          "delta": 0
+        },
+        {
+          "player": "P04",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P05",
+          "v": 4,
+          "b": 3,
+          "delta": -1
+        },
+        {
+          "player": "P06",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P08",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P09",
+          "v": 4,
+          "b": 5,
+          "delta": 1
+        }
+      ],
+      "v": 4,
+      "b": 4,
+      "delta": 0,
+      "medianDelta": 0,
+      "higher": 1,
+      "equal": 6,
+      "lower": 1
+    },
+    {
+      "base": 3,
+      "n": 8,
+      "pairs": [
+        {
+          "player": "P01",
+          "v": 5,
+          "b": 3,
+          "delta": -2
+        },
+        {
+          "player": "P02",
+          "v": 5,
+          "b": 3,
+          "delta": -2
+        },
+        {
+          "player": "P03",
+          "v": 4,
+          "b": 5,
+          "delta": 1
+        },
+        {
+          "player": "P04",
+          "v": 3,
+          "b": 3,
+          "delta": 0
+        },
+        {
+          "player": "P05",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P06",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P08",
+          "v": 2,
+          "b": 3,
+          "delta": 1
+        },
+        {
+          "player": "P09",
+          "v": 5,
+          "b": 4,
+          "delta": -1
+        }
+      ],
+      "v": 4,
+      "b": 3.625,
+      "delta": -0.375,
+      "medianDelta": 0,
+      "higher": 2,
+      "equal": 3,
+      "lower": 3
+    },
+    {
+      "base": 5,
+      "n": 8,
+      "pairs": [
+        {
+          "player": "P01",
+          "v": 5,
+          "b": 2,
+          "delta": -3
+        },
+        {
+          "player": "P02",
+          "v": 5,
+          "b": 4,
+          "delta": -1
+        },
+        {
+          "player": "P03",
+          "v": 5,
+          "b": 5,
+          "delta": 0
+        },
+        {
+          "player": "P04",
+          "v": 4,
+          "b": 3,
+          "delta": -1
+        },
+        {
+          "player": "P05",
+          "v": 4,
+          "b": 2,
+          "delta": -2
+        },
+        {
+          "player": "P06",
+          "v": 3,
+          "b": 4,
+          "delta": 1
+        },
+        {
+          "player": "P08",
+          "v": 2,
+          "b": 5,
+          "delta": 3
+        },
+        {
+          "player": "P09",
+          "v": 5,
+          "b": 3,
+          "delta": -2
+        }
+      ],
+      "v": 4.125,
+      "b": 3.5,
+      "delta": -0.625,
+      "medianDelta": -1,
+      "higher": 2,
+      "equal": 1,
+      "lower": 5
+    },
+    {
+      "base": 6,
+      "n": 8,
+      "pairs": [
+        {
+          "player": "P01",
+          "v": 5,
+          "b": 3,
+          "delta": -2
+        },
+        {
+          "player": "P02",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P03",
+          "v": 5,
+          "b": 5,
+          "delta": 0
+        },
+        {
+          "player": "P04",
+          "v": 3,
+          "b": 4,
+          "delta": 1
+        },
+        {
+          "player": "P05",
+          "v": 4,
+          "b": 2,
+          "delta": -2
+        },
+        {
+          "player": "P06",
+          "v": 3,
+          "b": 4,
+          "delta": 1
+        },
+        {
+          "player": "P08",
+          "v": 2,
+          "b": 3,
+          "delta": 1
+        },
+        {
+          "player": "P09",
+          "v": 4,
+          "b": 5,
+          "delta": 1
+        }
+      ],
+      "v": 3.75,
+      "b": 3.75,
+      "delta": 0,
+      "medianDelta": 0.5,
+      "higher": 4,
+      "equal": 2,
+      "lower": 2
+    },
+    {
+      "base": 7,
+      "n": 8,
+      "pairs": [
+        {
+          "player": "P01",
+          "v": 4,
+          "b": 1,
+          "delta": -3
+        },
+        {
+          "player": "P02",
+          "v": 4,
+          "b": 3,
+          "delta": -1
+        },
+        {
+          "player": "P03",
+          "v": 5,
+          "b": 5,
+          "delta": 0
+        },
+        {
+          "player": "P04",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P05",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P06",
+          "v": 4,
+          "b": 4,
+          "delta": 0
+        },
+        {
+          "player": "P08",
+          "v": 5,
+          "b": 3,
+          "delta": -2
+        },
+        {
+          "player": "P09",
+          "v": 5,
+          "b": 3,
+          "delta": -2
+        }
+      ],
+      "v": 4.375,
+      "b": 3.375,
+      "delta": -1,
+      "medianDelta": -0.5,
+      "higher": 0,
+      "equal": 4,
+      "lower": 4
+    }
+  ],
+  "overallPairedDelta": -0.3125
+}

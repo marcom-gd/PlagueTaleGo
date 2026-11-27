@@ -3,7 +3,7 @@ import {carriedItems} from './carried-items.js';
 import {countdown} from './lifetimes.js';
 
 const nestedObjects=(project,owner)=>activeDescendants(project,owner.assetId,owner).filter(a=>!isState(a)&&!isParameter(a));
-const badgePosition=(owner,n)=>`--x:${owner.x};--y:${owner.y};margin-left:${n*32}px`;
+const badgePosition=(owner,n)=>`--x:${owner.x};--y:${owner.y};--badge-index:${n}`;
 
 export function nestedBadges(project,level,art,esc){
   let html='';

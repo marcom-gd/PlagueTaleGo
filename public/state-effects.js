@@ -1,8 +1,9 @@
 import {descendants,isState,stateEnabled,pruneWaitProgress} from './model.js';
+import {captureStateDistractions,distractOnStateChange} from './distraction.js';
 
 // Shared by area effects, Use, and carried torches. A switch affects one
 // placement, enables ancestor states, and respects exclusive sibling groups.
-export function setState(project,instance,behaviour,assetId=instance.assetId) {
+export function setState(project,instance,behaviour,assetId=instance.assetId,inventory=[]) {
   const states=descendants(project,assetId).filter(isState);
   let state=states.find(s=>s.id===behaviour.stateKey)||states.find(s=>s.name.toLowerCase()===behaviour.stateKey.toLowerCase());
   if(!state)return false;
@@ -12,6 +13,7 @@ export function setState(project,instance,behaviour,assetId=instance.assetId) {
     const current=siblings.findIndex(s=>stateEnabled(project,s,instance));
     if(current>=0)state=siblings[(current+1)%siblings.length];
   }
+  const before=captureStateDistractions(project,instance,inventory);
   instance.stateOverrides??={};
   if(behaviour.stateToggle||behaviour.stateEnabled){
     let ancestor=project.assets.find(a=>a.id===state.parentId);
@@ -24,5 +26,6 @@ export function setState(project,instance,behaviour,assetId=instance.assetId) {
     enable(state);
   }else instance.stateOverrides={...instance.stateOverrides,[state.id]:false};
   pruneWaitProgress(project,instance);
+  distractOnStateChange(project,instance,before,inventory);
   return true;
 }

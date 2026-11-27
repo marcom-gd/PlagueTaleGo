@@ -55,7 +55,7 @@ export function throwObject(input,inventory,graveyard,choice,destination,makeId=
   // own passive behaviours must not change recipients before its impact.
   const owner=level.instances.find(i=>i.id===current.instanceId);
   const impactLog=distractOnImpact(project,level,item,hits,nextInventory,owner);
-  impactLog.push(...resolveHitStates(project,level,item,hits));
+  impactLog.push(...resolveHitStates(project,level,item,hits,nextInventory));
   if(!destroyed)level.instances.push(item);
   const events=[{type:'use',levelId:level.id,instanceId:owner.id}];
   if(stack)events.push({type:'inventoryDropped',levelId:level.id,instanceId:item.id,instance:clone(item)});
