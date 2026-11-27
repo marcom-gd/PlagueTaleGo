@@ -6,6 +6,16 @@ const onlineChosen = () => $('input[value="online"]').checked;
 const invitationUrl = () => session.publicUrl && `${session.publicUrl}/?room=${encodeURIComponent(room.value.toLowerCase())}`;
 
 function render() {
+  if (session.userTest) {
+    document.title = 'Plague Tale GO · User Test';
+    document.querySelector('h1').textContent = 'A little adventure. Your honest thoughts.';
+    document.querySelector('.intro>p').textContent = 'Play the levels in order, share a few honest thoughts after each one, and see your crew along the way.';
+    document.querySelector('.brand>span').textContent = 'USER TEST SESSIONS';
+    document.querySelector('.board-label').textContent = 'PLAY · FEEL · SHARE';
+    document.querySelector('#session-form').target = 'plague-tale-go-user-test';
+    document.querySelector('#credentials .hint').textContent = 'Share privately. This invitation opens User Test mode. Feedback is saved on this computer.';
+    $('#start-session').textContent = 'Start User Test →';
+  }
   const online = session.state === 'online', starting = session.state === 'starting', error = session.state === 'error';
   $('#online-panel').hidden = !onlineChosen() && !online && !starting && !error;
   $('#status-title').textContent = online ? 'Your online session is ready' : starting ? 'Preparing your session' : error ? 'Sharing needs a moment' : 'Online sharing is off';

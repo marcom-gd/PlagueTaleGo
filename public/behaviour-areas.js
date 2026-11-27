@@ -1,28 +1,30 @@
 import {descendants,assetIsActive,isParameter,hasNode,parameterOverlay,wallBlocks,nodesConnected} from './model.js';
 import {matchesSelection} from './object-selection.js';
+import {interactionOwners} from './object-locations.js';
 
 export const placementBehaviours=(project,instance)=>[project.assets.find(a=>a.id===instance.assetId),...descendants(project,instance.assetId)]
   .filter(a=>a&&assetIsActive(project,a.id,instance)).flatMap(assigned=>(assigned.behaviours||[]).filter(b=>b.enabled).map(behaviour=>({assigned,behaviour})));
 
 // Blockers are passive and recomputed from current placements and state switches.
 // Their own area uses geometry/walls directly, avoiding recursive blocker queries.
-export function blockedNodes(project,level,assetId,scope='movement',instanceId=null){
-  const blocked=new Set();
-  for(const owner of level.instances){
+export function blockedNodes(project,level,assetId,scope='movement',instanceId=null,inventory=[]){
+  const blocked=new Set(),sources=interactionOwners(project,level,inventory),affected=sources.find(i=>i.id===instanceId)||{assetId};
+  for(const owner of sources){
     const root=project.assets.find(a=>a.id===owner.assetId);
     for(const {assigned,behaviour:b} of placementBehaviours(project,owner)){
-      if(b.type!=='blockNode'||b.excludeSelf&&owner.id===instanceId||scope==='effects'&&b.blockScope!=='movementAndEffects'||!matchesSelection(project,level.instances.find(i=>i.id===instanceId)||{assetId},b.blockAssetIds,b.blockMode==='tags'?b.blockTagIds:undefined))continue;
+      if(b.type!=='blockNode'||b.excludeSelf&&(owner.id===instanceId||owner.carriedBy?.instanceId===instanceId)||scope==='effects'&&b.blockScope!=='movementAndEffects'||!matchesSelection(project,affected,b.blockAssetIds,b.blockMode==='tags'?b.blockTagIds:undefined))continue;
       for(const [x,y] of parameterOverlay(project,root,assigned,owner,level).cells)if(hasNode(level,`${x},${y}`))blocked.add(`${x},${y}`);
     }
   }
   return blocked;
 }
-export function effectCanReach(project,level,owner,target,blocked=blockedNodes(project,level,owner.assetId,'effects',owner.id)){
+export function effectCanReach(project,level,owner,target,blocked=null,inventory=[]){
+  blocked??=blockedNodes(project,level,owner.assetId,'effects',owner.id,inventory);
   const walls=Object.fromEntries([...blocked].map(key=>[key,'wall']));
   return !blocked.has(`${target.x},${target.y}`)&&!wallBlocks(walls,owner.x,owner.y,target.x,target.y);
 }
-export function effectOverlay(project,root,effect,owner,level){
-  const raw=parameterOverlay(project,root,effect,owner,level),blocked=blockedNodes(project,level,owner.assetId,'effects',owner.id);
+export function effectOverlay(project,root,effect,owner,level,inventory=[]){
+  const raw=parameterOverlay(project,root,effect,owner,level),blocked=blockedNodes(project,level,owner.assetId,'effects',owner.id,inventory);
   if(!blocked.size)return raw;
   const walls=Object.fromEntries([...blocked].map(key=>[key,'wall']));
   const cells=raw.cells.filter(([x,y])=>!blocked.has(`${x},${y}`)&&!wallBlocks(walls,owner.x,owner.y,x,y));
@@ -30,11 +32,11 @@ export function effectOverlay(project,root,effect,owner,level){
   const count=level.instances.filter(i=>i.id!==owner.id&&assetIsActive(project,i.assetId,i)&&!isParameter(project.assets.find(a=>a.id===i.assetId))&&matchesSelection(project,i,effect.overlapAssetIds,effect.overlapTagIds)&&covered.has(`${i.x},${i.y}`)).length;
   return {cells,count,color:effect.overlapThreshold>0&&count>=effect.overlapThreshold?(effect.overlapColor??'#edc47c'):effect.color};
 }
-export function checkMovement(before,after){
+export function checkMovement(before,after,inventory=[]){
   for(const level of after.levels)for(const instance of level.instances){
     const old=before.levels.find(l=>l.id===level.id)?.instances.find(i=>i.id===instance.id);
     if(old&&old.x===instance.x&&old.y===instance.y)continue;
-    const blocked=blockedNodes(before,before.levels.find(l=>l.id===level.id)||level,instance.assetId,'movement',instance.id);
+    const blocked=blockedNodes(before,before.levels.find(l=>l.id===level.id)||level,instance.assetId,'movement',instance.id,inventory);
     const goal=`${instance.x},${instance.y}`;
     if(blocked.has(goal))throw Error('Block Node prevents this object from entering that node.');
     // Manual moves between nodes must also have a route around the blockers.

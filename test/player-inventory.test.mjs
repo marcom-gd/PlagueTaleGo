@@ -54,7 +54,7 @@ test('collecting a canvas piece moves it privately, preserves its states and pru
   const result=collectItems(p,[],levelId,{type:'instance',id:'one',levelId});
   assert.deepEqual(p,before);
   assert.equal(result.inventory[0].count,1);
-  assert.deepEqual(result.inventory[0].items,[before.levels[0].instances[0]]);
+  assert.deepEqual(result.inventory[0].items,[{...before.levels[0].instances[0],sourceLevelId:levelId}]);
   assert.deepEqual(result.project.levels[0].instances.map(i=>i.id),['two']);
   assert.deepEqual(result.project.levels[0].objectLinks,[]);
   const restored=releaseItem(result.project,result.inventory,levelId,'one',{x:6,y:6});

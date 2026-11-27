@@ -1,5 +1,6 @@
 import {applyAction,clone,isState,uid,hasNode,validateProject} from './model.js';
 import {checkMovement} from './behaviour-areas.js';
+import {syncLifetimes} from './lifetimes.js';
 
 // Initialization is data construction, never collection/drop actions. It must
 // not emit gameplay events or resolve a turn, even for event-driven objects.
@@ -10,6 +11,7 @@ export function createPlaytestState(input,levelId,makeId=uid){
     const items=Array.from({length:entry.count||1},()=>({id:makeId(),assetId:entry.assetId,x:0,y:0,rotation:0,note:''}));
     return {id:items[0].id,assetId:entry.assetId,count:entry.count,items};
   });
+  syncLifetimes(project,inventory);
   return {project,inventory,graveyard:[],levelId};
 }
 
@@ -32,9 +34,10 @@ export function collectItems(project, inventory, levelId, payload) {
   }else return null;
   const stacks=clone(inventory);
   for(const item of items){
-    const stack=stacks.find(s=>s.assetId===item.assetId);
-    if(stack){stack.items.push(clone(item));if(stack.count!==0)stack.count++;}
-    else stacks.push({id:item.id,assetId:item.assetId,count:1,items:[clone(item)]});
+    const stored={...clone(item),sourceLevelId:levelId};
+    const stack=stacks.find(s=>s.assetId===item.assetId&&!s.items.some(i=>i.carriedBy||i.lifetimeProgress)&&!item.lifetimeProgress);
+    if(stack){stack.items.push(stored);if(stack.count!==0)stack.count++;}
+    else stacks.push({id:item.id,assetId:item.assetId,count:1,items:[stored]});
   }
   return {project:next,inventory:stacks};
 }
@@ -42,6 +45,7 @@ export function collectItems(project, inventory, levelId, payload) {
 // Zero is an intentional infinite supply. Consuming the last finite item,
 // unlike adjusting its quantity to zero, removes the stack.
 export function adjustStack(inventory,id,delta) {
+  if(inventory.find(s=>s.id===id)?.items.some(i=>i.carriedBy||i.lifetimeProgress))throw Error('Carried objects and objects with a lifetime have individual quantities.');
   return inventory.map(stack=>{
     if(stack.id!==id)return stack;
     const count=Math.max(0,stack.count+delta),items=clone(stack.items);
@@ -58,9 +62,11 @@ export function releaseItem(project, inventory, levelId, id, position, snap=fals
   if(!stack||!level)throw Error('This inventory object is no longer available.');
   if(snap&&!hasNode(level,`${position.x},${position.y}`))throw Error('Snap to Nodes is on. Choose an existing node.');
   const item={...clone(stack.items[0]),...position};
+  delete item.sourceLevelId;
+  delete item.carriedBy;
   if(stack.count===0)item.id=uid();
   const next=applyAction(project,{type:'instance.add',data:{levelId,instance:item}});
-  checkMovement(project,next);
+  checkMovement(project,next,inventory);
   const remaining=inventory.flatMap(s=>s.id!==id||s.count===0?[s]:s.count===1?[]:[{...s,count:s.count-1,items:s.items.slice(1)}]);
   return {project:next,inventory:remaining,instanceId:item.id};
 }

@@ -1,5 +1,6 @@
 import { validProfile } from './public/avatars.js';
 import { randomUUID } from 'node:crypto';
+import { testEmotions } from './public/user-test-schema.js';
 
 export function createPresence({ now = Date.now, ttl = 35000 } = {}) {
   const members = new Map(), listeners = new Set();
@@ -26,6 +27,16 @@ export function createPresence({ now = Date.now, ttl = 35000 } = {}) {
     }
     const member = { id: data.id, nickname: data.nickname.trim(), avatar: data.avatar, color: data.color, cursor };
     const previous = members.get(data.id);
+    if (data.levelId !== undefined) {
+      if (data.levelId !== null && (typeof data.levelId !== 'string' || data.levelId.length > 80)) throw Error('Invalid presence level.');
+      member.levelId = data.levelId;
+      member.play = data.play === true;
+    }
+    if (data.reaction != null) {
+      const { emotion, eventId } = data.reaction;
+      if (!testEmotions.some(e => e[0] === emotion) || typeof eventId !== 'string' || !/^[\w-]{16,80}$/.test(eventId)) throw Error('Invalid reaction.');
+      member.reaction = previous?.reaction?.eventId === eventId ? previous.reaction : { emotion, eventId, expiresAt: now() + 3500 };
+    }
     const different = !previous || JSON.stringify({ ...previous, seen: undefined }) !== JSON.stringify(member);
     members.set(data.id, { ...member, seen: now() });
     if (different) changed();

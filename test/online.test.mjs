@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {behaviourNames} from '../public/behaviour-schema.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -20,7 +21,7 @@ test('online sessions protect assets and APIs, share the tunnel URL, and sync re
     }
     assert.equal((await fetch(base, { headers: { Authorization: 'Basic wrong' } })).status, 401);
     const config = await (await fetch(base + '/api/config', { headers })).json();
-    assert.deepEqual(config, { urls: [online.publicUrl], transport: 'poll' });
+    assert.deepEqual(config, { urls: [online.publicUrl], transport: 'poll', behaviourTypes: Object.keys(behaviourNames), levelTransferVersion: 1 });
     const backupOptions = await (await fetch(base + '/api/options', { headers })).json();
     assert.equal(backupOptions.canManageBackups, false);
     const optionsUpdate = await fetch(base + '/api/options', { method: 'PUT', headers, body: JSON.stringify({ autosave: false, loadLatest: false }) });

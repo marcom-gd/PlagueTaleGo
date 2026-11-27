@@ -1,0 +1,10 @@
+{
+  "sourceRevision": 140,
+  "rule": "Kill Rats",
+  "light": "Little-Fire",
+  "range": 2,
+  "removedNearRat": true,
+  "keptOldPositionRat": true,
+  "keptDistantRat": true,
+  "portableBlockActive": true
+}

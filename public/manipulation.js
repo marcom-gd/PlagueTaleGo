@@ -1,6 +1,6 @@
 import {clone,uid,hasNode,facingDirection} from './model.js';
 import {copyHierarchy,copyWholeHierarchy} from './editing.js';
-export function manipulation({getProject,getLevel,getSelected,setSelected,dispatch,render,toast,isPlay,snap,esc,collectInventory,openBehaviourOrder}){
+export function manipulation({getProject,getLevel,getSelected,setSelected,dispatch,render,toast,isPlay,canMove=()=>true,snap,esc,collectInventory,openBehaviourOrder}){
   let selection=new Set(),drag=null,suppress=0,clipboard=null;
   const panel=document.createElement('details');panel.className='manipulation-panel';panel.open=true;
   try{panel.open=localStorage.getItem('workshop-manipulation-collapsed')!=='true';}catch{}
@@ -27,7 +27,7 @@ export function manipulation({getProject,getLevel,getSelected,setSelected,dispat
   };
   function refresh(){
     const focus=getSelected();if(focus?.type!=='instance')selection.clear();else {selection=new Set([...selection].filter(id=>getLevel().instances.some(i=>i.id===id)));selection.add(focus.id);}
-    for(const piece of document.querySelectorAll('[data-instance]')){const i=getLevel().instances.find(i=>i.id===piece.dataset.instance);piece.classList.toggle('group-selected',selection.has(i?.id));piece.classList.toggle('scenery-locked',!!i?.locked);piece.draggable=!i?.locked;}
+    for(const piece of document.querySelectorAll('[data-instance]')){const i=getLevel().instances.find(i=>i.id===piece.dataset.instance);piece.classList.toggle('group-selected',selection.has(i?.id));piece.classList.toggle('scenery-locked',!!i?.locked);piece.draggable=!i?.locked&&canMove(i);}
     const items=selectedItems(),a=focus?.type==='asset'?getProject().assets.find(a=>a.id===focus.id):null,active=items.find(i=>i.id===focus?.id),stack=active?getLevel().instances.filter(i=>i.x===active.x&&i.y===active.y):[];
     panel.innerHTML=`<summary class="eyebrow">MANIPULATE & ORGANIZE</summary><div class="inspector-actions"><button data-edit-action="behaviour-order">Behaviour resolution order</button></div><p>Shift/Ctrl-click pieces to select several. Drag or use arrow keys to move the group.</p><div class="inspector-actions"><button data-edit-action="select-all">Select all pieces</button><button data-edit-action="clear">Clear selection</button></div>${items.length?`<p><b>${items.length} selected</b> · ${items.filter(i=>i.locked).length} locked</p><div class="inspector-actions"><button data-edit-action="duplicate">Duplicate selection</button><button data-edit-action="lock">Lock scenery</button><button data-edit-action="unlock">Unlock</button><button data-edit-action="remove">Remove selected</button></div>`:''}${a?`<div class="inspector-actions"><button data-edit-action="copy-hierarchy" ${isPlay()?'disabled':''}>Duplicate whole hierarchy</button><button data-edit-action="copy-selected" ${isPlay()?'disabled':''}>Duplicate Selected</button></div>`:''}${stack.length>1?`<div class="stack-picker"><label for="stack-piece">Objects at this cell (${stack.length})</label><select id="stack-piece">${stack.map(i=>`<option value="${esc(i.id)}" ${i.id===focus.id?'selected':''}>${esc(getProject().assets.find(a=>a.id===i.assetId)?.name||'Object')}${i.locked?' · locked':''} · ${esc(i.id.slice(0,5))}</option>`).join('')}</select></div>`:''}`;
   }
@@ -52,7 +52,7 @@ export function manipulation({getProject,getLevel,getSelected,setSelected,dispat
     if(e.button!==0||document.querySelector('dialog[open]'))return;
     const piece=e.target.closest('[data-instance]');if(!piece)return;
     const i=getLevel().instances.find(i=>i.id===piece.dataset.instance);
-    if(e.shiftKey||e.ctrlKey||e.metaKey||i?.locked){e.stopImmediatePropagation();return;}
+    if(e.shiftKey||e.ctrlKey||e.metaKey||i?.locked||!canMove(i)){e.stopImmediatePropagation();return;}
     if(selection.size>1&&selection.has(i?.id)){e.preventDefault();e.stopImmediatePropagation();drag={x:e.clientX,y:e.clientY,i,active:false};}
   },true);
   document.addEventListener('pointermove',e=>{if(drag&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)>5){drag.active=true;for(const element of document.querySelectorAll('.group-selected'))element.style.transform=`translate(${e.clientX-drag.x}px,${e.clientY-drag.y}px)`;}},true);

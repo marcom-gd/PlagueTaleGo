@@ -17,21 +17,21 @@ const listen = (server, port) => new Promise((resolve, reject) => {
 });
 const close = server => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
 
-async function findLauncher(port) {
+async function findLauncher(port, userTest = false) {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/launcher/identity`, { signal: AbortSignal.timeout(1000), redirect: 'error' });
     const identity = await response.json();
-    if (identity.application === 'plague-tale-go-launcher' && identity.workspaceId === workspaceId) {
+    if (identity.application === 'plague-tale-go-launcher' && identity.workspaceId === workspaceId && Boolean(identity.userTest) === userTest) {
       return { url: `http://127.0.0.1:${port}/welcome`, reused: true, stop: async () => {} };
     }
   } catch {}
 }
 
-export async function createLauncher({ port = Number(process.env.PORT) || 3000, dataDir, connect } = {}) {
+export async function createLauncher({ userTest = false, port = Number(process.env.PORT) || (userTest ? 3100 : 3000), dataDir, connect } = {}) {
   // Probe the whole port range first: an earlier conflicting app may have closed
   // since this launcher chose its fallback port.
   if (port) for (let offset = 0; offset < 10 && port + offset <= 65535; offset++) {
-    const existing = await findLauncher(port + offset);
+    const existing = await findLauncher(port + offset, userTest);
     if (existing) return existing;
   }
   let base = '', sharing, gateway, shuttingDown = false;
@@ -55,9 +55,9 @@ export async function createLauncher({ port = Number(process.env.PORT) || 3000, 
           res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
           res.end(req.method === 'HEAD' ? undefined : body);
         } else if (url.pathname === '/api/launcher/identity' && req.method === 'GET') {
-          json(res, 200, { application: 'plague-tale-go-launcher', workspaceId });
+          json(res, 200, { application: 'plague-tale-go-launcher', workspaceId, userTest });
         } else if (url.pathname === '/api/launcher' && req.method === 'GET') {
-          json(res, 200, sharing?.snapshot() || { state: 'local' });
+          json(res, 200, { ...(sharing?.snapshot() || { state: 'local' }), ...(userTest ? { userTest: true } : {}) });
         } else if (['/api/launcher/online', '/api/launcher/stop'].includes(url.pathname) && req.method === 'POST') {
           // Require a browser same-origin request; a form on another website cannot start sharing.
           if (req.headers.origin !== `http://${req.headers.host}` || req.headers['content-type'] !== 'application/json') {
@@ -66,19 +66,19 @@ export async function createLauncher({ port = Number(process.env.PORT) || 3000, 
           if (!sharing || shuttingDown) { json(res, 503, { error: 'The launcher is starting or stopping. Please retry.' }); return true; }
           if (url.pathname.endsWith('/online')) sharing.start(randomBytes(12).toString('hex'));
           else await sharing.stop();
-          json(res, 200, sharing.snapshot());
+          json(res, 200, { ...sharing.snapshot(), ...(userTest ? { userTest: true } : {}) });
         } else json(res, 404, { error: 'Not found.' });
       } catch { if (!res.headersSent) json(res, 500, { error: 'Session controls could not complete the request. Please retry.' }); else res.end(); }
       return true;
     }
   };
-  const server = await createWorkshopServer({ ...(dataDir ? { dataDir } : {}), host });
+  const server = await createWorkshopServer({ ...(dataDir ? { dataDir } : {}), host, userTest });
   for (let attempt = 0; ; attempt++) {
     const candidate = port === 0 ? 0 : port + attempt;
     try { await listen(server, candidate); break; }
     catch (error) {
       if (error.code !== 'EADDRINUSE') { await close(server); throw error; }
-      const existing = await findLauncher(candidate);
+      const existing = await findLauncher(candidate, userTest);
       if (existing) { await close(server); return existing; }
       if (attempt >= 9) { await close(server); throw error; }
     }
@@ -126,7 +126,7 @@ function openBrowser(url) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const launcher = await createLauncher();
+    const launcher = await createLauncher({ userTest: process.argv.includes('--user-test') });
     console.log(`Plague Tale GO: ${launcher.url}`);
     if (!process.argv.includes('--no-open')) openBrowser(launcher.url);
     if (!launcher.reused) {

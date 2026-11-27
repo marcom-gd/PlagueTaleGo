@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node launcher.mjs", "start:server": "node server.mjs", "test": "node --test" },
+  "scripts": { "start": "node launcher.mjs", "start:user-test": "node launcher.mjs --user-test", "start:server": "node server.mjs", "test": "node --test --test-concurrency=1" },
   "engines": { "node": ">=20" }
 }

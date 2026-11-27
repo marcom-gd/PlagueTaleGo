@@ -6,8 +6,9 @@
   <script>try{document.documentElement.dataset.theme=localStorage.getItem('workshop-theme')==='dark'?'dark':'light';}catch{}</script>
   <title>Plague Tale GO · Workshop</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/user-test.css">
 </head>
-<body>
+<body class="app-loading">
   <header class="topbar">
     <a class="brand" href="/" aria-label="Plague Tale GO home"><span class="brand-icon" id="brand-icon"></span><span>PLAGUE TALE <b>GO</b><small>THE ATOMIC PARAMETERS WORKSHOP</small></span></a>
     <div class="project-label"><span class="tiny-dot"></span> Untitled workshop <span class="separator">/</span> <span id="save-state">Connecting…</span></div>
@@ -27,12 +28,13 @@
   </nav>
   <main class="workspace">
     <section class="editor">
-      <div class="editor-heading"><div><div class="eyebrow">THE LEVEL EDITOR</div><h1 id="level-title">The quiet courtyard</h1><p>Build a place. Give its pieces meaning.</p></div><div class="mode-switch"><button class="active" id="edit-mode">✎ Edit</button><button id="play-mode">▷ Playtest</button></div></div>
-      <div class="level-bar"><div id="level-tabs" class="level-tabs"></div><button id="add-level" title="Create a level" aria-label="Create a level">＋</button><button id="level-settings" class="level-settings" title="Level settings">⚙ <span>Level settings</span></button></div>
+      <div class="editor-heading"><div><div class="eyebrow">THE LEVEL EDITOR</div><h1 id="level-title">The quiet courtyard</h1><p>Build a place. Give its pieces meaning.</p></div><div class="mode-switch"><button class="active" id="edit-mode">✎ Edit</button><button id="play-mode">▷ Playtest</button></div><label class="playtest-mode-picker" for="playtest-mode">Playtest mode<select id="playtest-mode"><option value="sandbox">Sandbox Mode</option><option value="userTest">User Test Mode</option></select></label></div>
+      <div class="level-bar"><div id="level-tabs" class="level-tabs" role="group" aria-label="Levels"></div><button id="add-level" title="Create a level" aria-label="Create a level">＋</button><button id="level-settings" class="level-settings" title="Level settings">⚙ <span>Level settings</span></button></div>
       <nav id="turn-toolbar" class="turn-toolbar" aria-label="Playtest turns" hidden>
         <strong id="turn-label" aria-live="polite">Ready to start</strong>
         <button id="previous-turn" disabled>← Previous turn</button><button id="next-turn" class="primary">Start turn 1 →</button>
         <span class="turn-toolbar-divider"></span><button id="save-turns">Save sequence</button><button id="load-turns">Load sequence</button><button id="clear-turns">Clear sequence</button><button id="turn-log">Resolution log</button>
+        <button id="test-manual-finish" hidden>Finished? Give feedback →</button>
       </nav>
       <div class="workshop-toolbar" aria-label="Notes and design cards">
         <div class="annotation-tools"><button id="post-it-tool" aria-pressed="false" title="Add a post-it · P">▧ <span>Post-it</span></button><div id="post-it-colors" role="group" aria-label="Post-it color"></div></div>
@@ -45,6 +47,7 @@
         <section id="player-inventory" class="player-inventory" aria-label="Player inventory" hidden></section>
         <section id="player-graveyard" class="player-inventory player-graveyard" aria-label="Graveyard" hidden></section>
         <div class="board-viewport" id="board-viewport"><div id="board" class="board" role="grid" aria-label="Level grid"></div></div>
+        <section id="game-outcome" class="game-outcome" role="status" aria-live="assertive" hidden><div class="game-outcome-card"><div class="eyebrow">THE END OF THIS TALE?</div><h2 id="game-outcome-title"></h2><p id="game-outcome-message"></p><small id="game-outcome-detail"></small><button id="next-level" class="primary" hidden>Go to next level →</button></div></section>
         <div class="canvas-caption"><span class="caption-star">✧</span><span id="canvas-hint">An empty stage for your ideas.<br><b>Start with a token, or shape the ground.</b></span></div>
         <div class="zoom-control"><button id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-label">100%</span><button id="zoom-in" aria-label="Zoom in">＋</button><button id="zoom-fit" title="Fit to canvas">⌗</button></div>
         <div id="play-banner" hidden>PLAYTEST <span>Pieces & turns are private. Notes & cards are saved.</span><button id="reset-play">↺ Reset</button></div>

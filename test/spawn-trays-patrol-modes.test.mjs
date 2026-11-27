@@ -61,7 +61,7 @@ test('self transfers preserve placement state, stack in both trays, prune links,
     const previous=[{id:'old-stack',assetId:'guard',count:1,items:[placed('old','guard')]}];
     const result=resolveTurn(p,tray==='inventory'?previous:[],tray==='graveyard'?previous:[]);
     assert.deepEqual(result.project.levels[0].instances.map(i=>i.id),['r']);assert.equal(result.project.levels[0].objectLinks.length,0);
-    assert.equal(result[tray][0].count,2);assert.deepEqual(result[tray][0].items[1],l.instances[0]);assert.equal(previous[0].count,1);assert.equal(result.log.length,1);
+    assert.equal(result[tray][0].count,2);assert.deepEqual(result[tray][0].items[1],{...l.instances[0],sourceLevelId:l.id});assert.equal(previous[0].count,1);assert.equal(result.log.length,1);
   }
 });
 

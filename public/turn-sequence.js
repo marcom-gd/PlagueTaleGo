@@ -1,12 +1,14 @@
 import {clone,validateProject} from './model.js';
 import {resolveTurn} from './behaviours.js';
 import {behaviourNames} from './behaviour-schema.js';
+import {gameOutcome,validateOutcome} from './game-outcomes.js';
+import {lifetimeItems,lifetimeKey} from './lifetimes.js';
 
 export const maxTurns=200;
 export const createSequence=state=>({format:'plague-tale-go-turns',version:1,cursor:0,frames:[{...clone(state),log:[]}]});
 export function captureSequence(sequence,state){
   const next={...sequence,frames:[...sequence.frames]},previous=next.frames[next.cursor];
-  const changed=['project','inventory','graveyard'].some(key=>JSON.stringify(state[key])!==JSON.stringify(previous[key]));
+  const changed=['project','inventory','graveyard','outcome','levelId'].some(key=>JSON.stringify(state[key])!==JSON.stringify(previous[key]));
   if(changed)next.frames.length=next.cursor+1;
   next.frames[next.cursor]={...clone(state),log:previous.log};
   return next;
@@ -14,8 +16,9 @@ export function captureSequence(sequence,state){
 export function nextTurn(sequence,state,makeId){
   const next=captureSequence(sequence,state);
   if(next.cursor<next.frames.length-1){next.cursor++;return next;}
+  if(state.outcome)throw Error('Clear Sequence to Restart, or go to the next level.');
   if(next.cursor>=maxTurns)throw Error(`A sequence supports ${maxTurns} turns. Save it, then clear to begin another sequence.`);
-  const result=resolveTurn(state.project,state.inventory,state.graveyard,makeId);
+  const result=resolveTurn(state.project,state.inventory,state.graveyard,makeId,state.levelId);
   next.frames.push({...result,levelId:state.levelId});next.cursor++;return next;
 }
 export function previousTurn(sequence,state){
@@ -27,7 +30,10 @@ export function eventTurn(sequence,before,after,actionLog=[]){
   const next=captureSequence(sequence,before);
   if(next.cursor>=maxTurns)throw Error(`A sequence supports ${maxTurns} turns. Save it, then clear to begin another sequence.`);
   next.frames.length=next.cursor+1;
-  const result=resolveTurn(after.project,after.inventory,after.graveyard);
+  const outcome=after.outcome||gameOutcome(after.project,after.graveyard,after.levelId);
+  const clocks=state=>lifetimeItems(state).flatMap(i=>(i.lifetimeProgress||[]).map(e=>lifetimeKey(i,e)));
+  const previousClocks=new Set(clocks(before)),freshClocks=clocks(after).filter(key=>!previousClocks.has(key));
+  const result=outcome?{...clone(after),outcome,log:[]}:resolveTurn(after.project,after.inventory,after.graveyard,undefined,after.levelId,freshClocks);
   next.frames.push({...result,log:[...actionLog,...result.log],levelId:after.levelId});next.cursor++;return next;
 }
 function validateTray(project,tray){
@@ -52,9 +58,18 @@ export function validateSequence(input){
   for(const frame of sequence.frames){
     if(!frame)throw Error('Invalid turn snapshot.');
     frame.project=validateProject(frame.project);
+    validateOutcome(frame.outcome,frame.project);
     if(!frame.project.levels.some(l=>l.id===frame.levelId))throw Error('Invalid turn level.');
+    if(frame.outcome&&frame.outcome.levelId!==frame.levelId)throw Error('Turn outcome belongs to another level.');
     validateTray(frame.project,frame.inventory);validateTray(frame.project,frame.graveyard);
     if(!Array.isArray(frame.log)||frame.log.length>500000||frame.log.some(item=>!item||typeof item.assetName!=='string'||item.assetName.length>80||!Object.hasOwn(behaviourNames,item.type)||!Number.isInteger(item.count)||item.count<0||item.count>100000))throw Error('Invalid turn resolution log.');
+    if(frame.log.some(item=>item.message!==undefined&&(typeof item.message!=='string'||item.message.length>500)))throw Error('Invalid turn feedback.');
+    const carriers=new Set();
+    for(const stack of frame.inventory)for(const item of stack.items)if(item.carriedBy){
+      const key=item.id,level=frame.project.levels.find(l=>l.id===item.carriedBy.levelId);
+      if(stack.count!==1||stack.items.length!==1||carriers.has(key)||!level?.instances.some(i=>i.id===item.carriedBy.instanceId))throw Error('Invalid inventory carrier.');
+      carriers.add(key);
+    }
   }
   return sequence;
 }

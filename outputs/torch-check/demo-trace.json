@@ -1,0 +1,56 @@
+[
+  {
+    "turn": 0,
+    "action": "start",
+    "carrying": null,
+    "remaining": null
+  },
+  {
+    "turn": 1,
+    "action": "Pick Up",
+    "carrying": "torch-demo-stick",
+    "remaining": null
+  },
+  {
+    "turn": 2,
+    "action": "move",
+    "carrying": "torch-demo-stick",
+    "remaining": null
+  },
+  {
+    "turn": 3,
+    "action": "Use: switch carried state",
+    "carrying": "torch-demo-stick",
+    "remaining": 5
+  },
+  {
+    "turn": 4,
+    "action": "move",
+    "carrying": "torch-demo-stick",
+    "remaining": 4
+  },
+  {
+    "turn": 5,
+    "action": "move",
+    "carrying": "torch-demo-stick",
+    "remaining": 3
+  },
+  {
+    "turn": 6,
+    "action": "Carried Use: switch target state",
+    "carrying": "torch-demo-stick",
+    "remaining": 2
+  },
+  {
+    "turn": 7,
+    "action": "next turn",
+    "carrying": "torch-demo-stick",
+    "remaining": 1
+  },
+  {
+    "turn": 8,
+    "action": "next turn",
+    "carrying": null,
+    "remaining": null
+  }
+]

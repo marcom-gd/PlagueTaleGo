@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {behaviourNames} from '../public/behaviour-schema.js';
 import http from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -38,7 +39,7 @@ test('one launcher shares one room store while keeping host controls and credent
     for (const asset of ['/welcome.js', '/welcome.css']) assert.equal((await fetch(base + asset)).status, 200);
     assert.equal((await status()).state, 'local');
     assert.equal((await (await fetch(base + '/api/options')).json()).canManageBackups, true);
-    assert.deepEqual(await (await fetch(base + '/api/config')).json(), { urls: [], localOnly: true, hostControls: true });
+    assert.deepEqual(await (await fetch(base + '/api/config')).json(), { urls: [], localOnly: true, hostControls: true, behaviourTypes: Object.keys(behaviourNames), levelTransferVersion: 1 });
     assert.equal(await rawStatus(base + '/api/launcher', { Host: 'attacker.example' }), 403);
     assert.equal((await fetch(base + '/api/launcher', { headers: { Origin: 'https://attacker.example' } })).status, 403);
     assert.equal((await fetch(base + '/api/launcher/online', { method: 'POST' })).status, 403);
@@ -62,8 +63,8 @@ test('one launcher shares one room store while keeping host controls and credent
       assert.ok(!(await response.text()).includes(session.password));
     }
     assert.equal((await fetch(target + '/api/launcher/stop', { method: 'POST', headers: { ...auth, Origin: target, 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
-    assert.deepEqual(await (await fetch(target + '/api/config', { headers: auth })).json(), { urls: [session.publicUrl], localOnly: false, hostControls: false, transport: 'poll' });
-    assert.deepEqual(await (await fetch(base + '/api/config')).json(), { urls: [session.publicUrl], localOnly: false, hostControls: true });
+    assert.deepEqual(await (await fetch(target + '/api/config', { headers: auth })).json(), { urls: [session.publicUrl], localOnly: false, hostControls: false, transport: 'poll', behaviourTypes: Object.keys(behaviourNames), levelTransferVersion: 1 });
+    assert.deepEqual(await (await fetch(base + '/api/config')).json(), { urls: [session.publicUrl], localOnly: false, hostControls: true, behaviourTypes: Object.keys(behaviourNames), levelTransferVersion: 1 });
     assert.equal((await (await fetch(target + '/api/options', { headers: auth })).json()).canManageBackups, false);
     assert.equal((await (await fetch(target + '/api/decks', { headers: auth })).json()).canEdit, false);
     assert.equal((await fetch(target + '/api/decks/design-experiments', { method: 'PUT', headers: auth, body: '{}' })).status, 403);

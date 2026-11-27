@@ -5,17 +5,20 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash, timingSafeEqual, randomInt } from 'node:crypto';
 import { newProject, applyAction, validateProject } from './public/model.js';
+import {behaviourNames} from './public/behaviour-schema.js';
 import { createPresence } from './presence.mjs';
 import { deckIds, validateDeck } from './public/cards-catalog.js';
 import { initialWorkshop, validateWorkshop, updateWorkshop } from './public/workshop-programme.js';
 import { exportInventory, snapshotKinds } from './inventory-export.mjs';
 import { projectBackups } from './project-backups.mjs';
+import { userTestStore } from './user-test-store.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-export async function createWorkshopServer({ dataDir = path.join(root, 'data'), cardsDir = path.join(root, 'cards'), online = null, host = null, saveDir = dataDir === path.join(root, 'data') ? path.join(root, 'Saved Projects') : path.join(dataDir, 'Saved Projects'), autosaveIntervalMs = 5 * 60 * 1000 } = {}) {
+export async function createWorkshopServer({ dataDir = path.join(root, 'data'), cardsDir = path.join(root, 'cards'), online = null, host = null, userTest = false, feedbackDir = dataDir === path.join(root, 'data') ? path.join(root, 'User Test Feedback') : path.join(dataDir, 'User Test Feedback'), saveDir = dataDir === path.join(root, 'data') ? path.join(root, 'Saved Projects') : path.join(dataDir, 'Saved Projects'), autosaveIntervalMs = 5 * 60 * 1000 } = {}) {
   await mkdir(dataDir, { recursive: true });
   const backups = await projectBackups({ defaultSaveFolder: saveDir, preferencesFile: path.join(dataDir, 'backup-options.json') });
   const rooms = new Map();
+  const tests = userTestStore(feedbackDir);
   const readDeck = async id => {
     if(!deckIds.includes(id))throw Error('Unknown card deck.');
     return validateDeck(JSON.parse(await readFile(path.join(cardsDir, `${id}.json`), 'utf8')), id);
@@ -56,6 +59,7 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
     const json = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
     const canManageBackups = !online && isLocalHost;
     try {
+      if (userTest && ['/api/options', '/api/decks'].some(route => url.pathname.startsWith(route)) && !['GET', 'HEAD'].includes(req.method)) return json(403, { error: 'Project editing is unavailable in User Test sessions.' });
       if (url.pathname === '/api/options') {
         if (req.method === 'GET') return json(200, { ...backups.snapshot(), canManageBackups });
         if (req.method !== 'PUT') return json(405, { error: 'Method not allowed.' });
@@ -85,15 +89,28 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
         return;
       }
       if (url.pathname === '/api/config') {
-        if (online) return json(200, { urls: online.publicUrl ? [online.publicUrl] : [], transport: 'poll' });
-        if (host) return json(200, { urls: host.publicUrl ? [host.publicUrl] : [], localOnly: !host.publicUrl, hostControls: isLocalHost, ...(!isLocalHost ? { transport: 'poll' } : {}) });
+        const config=value=>json(200,{...value,behaviourTypes:Object.keys(behaviourNames),levelTransferVersion:1});
+        if (userTest) return config({ userTest: true, urls: host?.publicUrl ? [host.publicUrl] : online?.publicUrl ? [online.publicUrl] : [], ...(host ? { localOnly: !host.publicUrl, hostControls: isLocalHost } : {}), ...((online || host && !isLocalHost) ? { transport: 'poll' } : {}) });
+        if (online) return config({ urls: online.publicUrl ? [online.publicUrl] : [], transport: 'poll' });
+        if (host) return config({ urls: host.publicUrl ? [host.publicUrl] : [], localOnly: !host.publicUrl, hostControls: isLocalHost, ...(!isLocalHost ? { transport: 'poll' } : {}) });
         const port = server.address().port;
-        return json(200, { urls: Object.values(os.networkInterfaces()).flat().filter(a => a.family === 'IPv4' && !a.internal).map(a => `http://${a.address}:${port}`) });
+        return config({ urls: Object.values(os.networkInterfaces()).flat().filter(a => a.family === 'IPv4' && !a.internal).map(a => `http://${a.address}:${port}`) });
       }
       if (url.pathname.startsWith('/api/rooms/')) {
         const [, , , name, endpoint] = url.pathname.split('/');
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name || '')) return json(400, { error: 'Invalid room name.' });
         const room = await getRoom(name.toLowerCase());
+        if (endpoint === 'user-test') {
+          if (!userTest) return json(404, { error: 'Start the User Test launcher to use this feature.' });
+          if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+          if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
+          const [, , , , , id, command] = url.pathname.split('/');
+          let body = '';
+          for await (const chunk of req) { body += chunk; if (body.length > 40000) return json(413, { error: 'Feedback is too large.' }); }
+          await room.queue;
+          return json(200, await tests({ room: name.toLowerCase(), id, command, body: JSON.parse(body || '{}'), project: room.project, revision: room.revision }));
+        }
+        if (userTest && ['actions', 'workshop', 'save'].includes(endpoint) && req.method !== 'GET') return json(403, { error: 'Project editing is unavailable in User Test sessions.' });
         if (endpoint === 'save' && req.method === 'POST') {
           if (!canManageBackups) return json(403, { error: 'Save to a folder from localhost on the workshop computer, or use Export project to download.' });
           if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
@@ -151,7 +168,7 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
           if (req.headers.origin && ![`http://${req.headers.host}`, `https://${req.headers.host}`].includes(req.headers.origin)) return json(403, { error: 'Origin does not match this server.' });
           let body = '';
           for await (const chunk of req) { body += chunk; if (body.length > 2048) return json(413, { error: 'Presence is too large.' }); }
-          return json(200, room.presence.update(JSON.parse(body)));
+          return json(200, room.presence.update({ ...JSON.parse(body), ...(userTest ? { cursor: null } : {}) }));
         }
         if (endpoint === 'events' && req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
@@ -169,7 +186,7 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
           if (typeof actionId !== 'string' || actionId.length > 100) return json(400, { error: 'Missing action ID.' });
           room.queue = room.queue.catch(() => {}).then(async () => {
             if (room.recent.has(actionId)) return json(200, {project:room.project,revision:room.revision,actionId});
-            if (action.type === 'project.replace' && expectedRevision !== room.revision) return json(409, { error: 'Another participant changed the project. Try again after reviewing their changes.' });
+            if (['project.replace','level.import'].includes(action.type) && expectedRevision !== room.revision) return json(409, { error: 'Another participant changed the project. Try again after reviewing their changes.' });
             if(action.type==='card.record')throw Error('Draw a card from its deck instead.');
             let resolvedAction=action;
             if(action.type==='card.claim'){
@@ -211,7 +228,7 @@ export async function createWorkshopServer({ dataDir = path.join(root, 'data'), 
   presenceCleanup.unref();
   let savingBackups = false;
   const autosaveTimer = setInterval(async () => {
-    if (savingBackups || !backups.snapshot().autosave) return;
+    if (userTest || savingBackups || !backups.snapshot().autosave) return;
     savingBackups = true;
     try {
       for (const [name, pendingRoom] of rooms) {

@@ -1,6 +1,6 @@
 import {matchesSelection} from './object-selection.js';
 import { iconNames, iconVariants, defaultVariant } from './icons.js';
-import { validateBehaviours, validateMoveTarget, validateReferenceOverrides, validateTags, validateWaitProgress } from './behaviour-schema.js';
+import { validateBehaviours, validateMoveTarget, validateReferenceOverrides, validateTags, validateWaitProgress, validateDistraction, validateCarriedProgress } from './behaviour-schema.js';
 // randomUUID is unavailable on plain HTTP LAN addresses, unlike localhost.
 export const uid = () => {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -16,7 +16,8 @@ export const clone = x => JSON.parse(JSON.stringify(x));
 export const floorVariants = [
   { tile: 'floor-elevated', label: 'Elevated' },
   { tile: 'floor', label: 'Ground' },
-  { tile: 'floor-underground', label: 'Underground' }
+  { tile: 'floor-underground', label: 'Underground' },
+  { tile: 'stairs', label: 'Stairs' }
 ];
 export const isFloor = tile => floorVariants.some(variant => variant.tile === tile);
 // Legacy maps store standalone nodes in tiles; new nodes use a separate layer.
@@ -55,7 +56,13 @@ export function adjacentNodes(l, a, b) {
   const [ax, ay] = a.split(',').map(Number), [bx, by] = b.split(',').map(Number);
   return Math.abs(ax-bx) + Math.abs(ay-by) === 1;
 }
-export const nodesConnected = (l, a, b) => adjacentNodes(l,a,b) && !(l.blockedLinks || []).includes(linkKey(a,b));
+export function canConnectNodes(l, a, b) {
+  if (!adjacentNodes(l,a,b)) return false;
+  const from = l.tiles[a], to = l.tiles[b];
+  // Bare nodes retain legacy connections; stairs bridge any floor height.
+  return from === to || from === 'stairs' || to === 'stairs' || !isFloor(from) || !isFloor(to);
+}
+export const nodesConnected = (l, a, b) => canConnectNodes(l,a,b) && !(l.blockedLinks || []).includes(linkKey(a,b));
 export const isClosedPatrol = nodes => nodes.length>2 && nodes[0]===nodes.at(-1);
 export function appendPatrolNode(level,nodes,key) {
   if(!hasNode(level,key)||isClosedPatrol(nodes))return nodes;
@@ -96,9 +103,12 @@ export function descendants(project, id, visited = new Set()) {
 export const isState = a => a?.kind === 'state';
 export const parameterIcons = ['area','self','sight','cone','rectangle','cross'];
 export const isParameter = a => !isState(a) && parameterIcons.includes(a?.icon);
+export const parameterLayers = ['Light','Vision','Range','Other'];
+// Missing layers in older projects belong to Other without rewriting the save.
+export const parameterLayer = a => a?.parameterLayer ?? 'Other';
 const nestedObjectIds = (project,id) => new Set(descendants(project,id).filter(a=>!isState(a)&&!isParameter(a)).map(a=>a.id));
 // Uses keep their own hierarchy identity, while these properties belong to the definition.
-const parameterKeys=['name','icon','variant','rule','tags','color','range','width','rotation','direction','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','overlapTagIds','behaviours'];
+const parameterKeys=['name','icon','variant','rule','tags','color','range','width','rotation','direction','parameterLayer','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','overlapTagIds','behaviours'];
 export const parameterDefinition = (project,a) => a?.parameterId ? project.assets.find(b=>b.id===a.parameterId) : a;
 export const sharedBehaviour = (definition,id) => ({...clone(definition.behaviour),id,definitionId:definition.id});
 const sameJSON=(a,b)=>a===b||!!a&&!!b&&typeof a==='object'&&typeof b==='object'&&Array.isArray(a)===Array.isArray(b)&&Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(key=>Object.hasOwn(b,key)&&sameJSON(a[key],b[key]));
@@ -140,6 +150,7 @@ export function activeDescendants(project,id,instance=null) {
   return descendants(project,id).filter(a=>assetIsActive(project,a.id,instance));
 }
 export function pruneWaitProgress(project,instance) {
+  pruneLifetimeProgress(project,instance);
   if(!instance.waitProgress)return;
   const scope=new Set([instance.assetId,...descendants(project,instance.assetId).map(a=>a.id)]);
   const progress=instance.waitProgress.filter(entry=>{
@@ -149,6 +160,12 @@ export function pruneWaitProgress(project,instance) {
   });
   if(progress.length)instance.waitProgress=progress;
   else delete instance.waitProgress;
+}
+export function pruneLifetimeProgress(project,instance){
+  if(!instance.lifetimeProgress)return;
+  const scope=new Set([instance.assetId,...descendants(project,instance.assetId).map(a=>a.id)]);
+  instance.lifetimeProgress=instance.lifetimeProgress.filter(e=>scope.has(e.assignedId)&&assetIsActive(project,e.assignedId,instance)&&project.assets.find(a=>a.id===e.assignedId)?.behaviours?.some(b=>b.id===e.behaviourId&&b.enabled&&b.type==='lifetime'&&b.turns===e.total));
+  if(!instance.lifetimeProgress.length)delete instance.lifetimeProgress;
 }
 export function appearance(project,a,instance=null) {
   const states=project.assets.filter(b=>b.parentId===a.id && isState(b) && stateEnabled(project,b,instance));
@@ -198,9 +215,11 @@ export function validateProject(p) {
     if(a.exclusiveStates!==undefined&&typeof a.exclusiveStates!=='boolean')throw Error('Invalid exclusive states option.');
     for(const key of ['autoFacing','followTokenFacing'])if(a[key]!==undefined && typeof a[key]!=='boolean')throw Error('Invalid facing option.');
     if(a.nonBlocking!==undefined&&typeof a.nonBlocking!=='boolean')throw Error('Invalid free node option.');
+    if(a.canBeMovedInUserTest!==undefined&&typeof a.canBeMovedInUserTest!=='boolean')throw Error('Invalid user test movement option.');
     if(a.direction!=null && ![0,90,180,270].includes(a.direction))throw Error('Invalid token direction.');
     if(a.rotation!==undefined && ![0,90,180,270].includes(a.rotation))throw Error('Invalid definition rotation.');
     if(a.occludedByWalls!==undefined && typeof a.occludedByWalls!=='boolean')throw Error('Invalid wall occlusion.');
+    if(a.parameterLayer!==undefined && !parameterLayers.includes(a.parameterLayer))throw Error('Invalid parameter layer.');
     if(a.overlapThreshold!==undefined && (!Number.isInteger(a.overlapThreshold)||a.overlapThreshold<0||a.overlapThreshold>1000))throw Error('Invalid overlap threshold.');
     if(a.overlapAssetIds!=null && (!Array.isArray(a.overlapAssetIds)||a.overlapAssetIds.length>500||new Set(a.overlapAssetIds).size!==a.overlapAssetIds.length||a.overlapAssetIds.some(id=>!p.assets.some(b=>b.id===id&&!isState(b)&&!parameterIcons.includes(b.icon)))))throw Error('Invalid overlap objects.');
     if(a.overlapTagIds!=null)validateTags(a.overlapTagIds);
@@ -224,6 +243,7 @@ export function validateProject(p) {
   for (const l of p.levels) {
     reserve(l.id);
     validateReferenceOverrides(l.referenceOverrides);
+    if(l.hideFromPlaytest!==undefined&&typeof l.hideFromPlaytest!=='boolean')throw Error('Invalid Hide from Playtest setting.');
     if (typeof l.name !== 'string' || l.name.length > 80 || !Number.isInteger(l.width) || !Number.isInteger(l.height) || l.width < 4 || l.width > 32 || l.height < 4 || l.height > 24 || !l.tiles || !Array.isArray(l.instances) || l.instances.length > 1000) throw Error('Invalid level.');
     if(l.startingInventory!==undefined){
       if(!Array.isArray(l.startingInventory)||l.startingInventory.length>500)throw Error('Invalid starting inventory.');
@@ -272,6 +292,8 @@ export function validateProject(p) {
       if(i.moveTarget!==undefined&&i.moveTarget!==null)validateMoveTarget(i.moveTarget);
       validateReferenceOverrides(i.referenceOverrides);
       validateWaitProgress(i.waitProgress);
+      validateDistraction(i.distraction);
+      validateCarriedProgress(i);
       if(i.patrolProgress!==undefined&&(!i.patrolProgress||typeof i.patrolProgress!=='object'||Array.isArray(i.patrolProgress)||Object.entries(i.patrolProgress).some(([id,v])=>!id||!['start','end','loopStart','loopEnd'].includes(v))))throw Error('Invalid patrol progress.');
       if(i.patrolColor!=null&&!/^#[0-9a-f]{6}$/i.test(i.patrolColor))throw Error('Invalid placement color dot.');
       if(i.locked!==undefined&&typeof i.locked!=='boolean')throw Error('Invalid scenery lock.');
@@ -431,7 +453,7 @@ export function applyAction(input, action) {
       const a=parameterDefinition(p,target);
       if(target.parameterId && 'icon' in d && !parameterIcons.includes(d.icon))throw Error('A reusable parameter needs a parameter shape.');
       if(!target.parameterId && isParameter(a) && 'icon' in d && !parameterIcons.includes(d.icon) && p.assets.some(b=>b.parameterId===a.id))throw Error('Detach all uses before changing this parameter into a token.');
-      for (const key of ['name','icon','variant','kind','enabled','rule','tags','color','range','width','rotation','direction','autoFacing','nonBlocking','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','overlapTagIds','parentId','exclusiveStates','behaviours']) if (key in d) a[key] = d[key];
+      for (const key of ['name','icon','variant','kind','enabled','rule','tags','color','range','width','rotation','direction','parameterLayer','autoFacing','nonBlocking','canBeMovedInUserTest','followTokenFacing','occludedByWalls','overlapThreshold','overlapColor','overlapAssetIds','overlapTagIds','parentId','exclusiveStates','behaviours']) if (key in d) a[key] = d[key];
       if(target.parameterId && 'parentId' in d){target.parentId=d.parentId;a.parentId=null;}
       if(d.exclusiveStates===true){const enabled=p.assets.filter(b=>isState(b)&&b.parentId===a.id&&b.enabled);for(const sibling of enabled.slice(0,-1))sibling.enabled=false;}
       if(d.enabled&&isState(a)&&p.assets.find(b=>b.id===a.parentId)?.exclusiveStates)for(const sibling of p.assets.filter(b=>isState(b)&&b.parentId===a.parentId&&b.id!==a.id))sibling.enabled=false;
@@ -458,6 +480,7 @@ export function applyAction(input, action) {
     case 'link.update': {
       const l = level();
       if (!adjacentNodes(l,d.from,d.to) || typeof d.connected !== 'boolean') throw Error('Choose two adjacent path nodes.');
+      if (d.connected && !canConnectNodes(l,d.from,d.to)) throw Error('Use stairs to connect nodes on different floor types.');
       const key = linkKey(d.from,d.to);
       l.blockedLinks = l.blockedLinks.filter(k=>k!==key);
       if (!d.connected) l.blockedLinks.push(key);
@@ -486,8 +509,39 @@ export function applyAction(input, action) {
       for(const key of ['name','rule','color','instanceIds'])if(key in d)link[key]=d[key];break;
     }
     case 'objectLink.delete': {const l=level();l.objectLinks=l.objectLinks.filter(link=>link.id!==d.id);break;}
+    case 'level.import': {
+      // One shared, undoable edit: definitions are added without overwriting the
+      // library; only explicitly chosen levels are replaced, in their old slots.
+      if(!d || !['assets','tags','behaviourLibrary','levels','replacements','behaviourOrder'].every(key=>Array.isArray(d[key])))throw Error('Invalid level import.');
+      const replaced=new Set();
+      for(const replacement of d.replacements){
+        const index=p.levels.findIndex(l=>l.id===replacement.targetId);
+        if(index<0||replaced.has(replacement.targetId)||replacement.level?.id!==replacement.targetId)throw Error('The level to replace no longer exists. Review the import again.');
+        replaced.add(replacement.targetId);p.levels[index]=replacement.level;
+      }
+      p.assets.push(...d.assets);p.tags.push(...d.tags);
+      if(d.behaviourLibrary.length)p.behaviourLibrary=[...(p.behaviourLibrary||[]),...d.behaviourLibrary];
+      p.levels.push(...d.levels);
+      if(!d.levels.length&&!d.replacements.length)throw Error('Select at least one level to import.');
+      if(d.behaviourOrder.length){
+        const rank=new Map((p.behaviourOrder||[]).map((id,n)=>[id,n]));
+        const added=new Set(d.behaviourOrder);
+        const previous=p.assets.filter(a=>!a.parameterId).flatMap(a=>a.behaviours||[]).filter(b=>!added.has(b.id)).sort((a,b)=>(rank.get(a.id)??Infinity)-(rank.get(b.id)??Infinity)).map(b=>b.id);
+        p.behaviourOrder=[...previous,...d.behaviourOrder];
+      }
+      break;
+    }
     case 'level.add': p.levels.push(d); break;
-    case 'level.update': { const l = level(); for (const key of ['name','width','height','startingInventory']) if (key in d) l[key] = d[key]; break; }
+    case 'level.move': {
+      const moved = level();
+      if (d.beforeId !== null && !p.levels.some(l => l.id === d.beforeId)) throw Error('Destination level no longer exists.');
+      if (d.beforeId === moved.id) break;
+      p.levels = p.levels.filter(l => l.id !== moved.id);
+      const index = d.beforeId === null ? p.levels.length : p.levels.findIndex(l => l.id === d.beforeId);
+      p.levels.splice(index, 0, moved);
+      break;
+    }
+    case 'level.update': { const l = level(); for (const key of ['name','width','height','startingInventory','hideFromPlaytest']) if (key in d) l[key] = d[key]; break; }
     case 'level.delete': if (p.levels.length > 1) p.levels = p.levels.filter(l => l.id !== d.levelId); break;
     case 'project.replace': return validateProject(clone(d));
     default: throw Error('Unknown editor action.');
@@ -533,10 +587,32 @@ export function wallBlocks(tiles, x0, y0, x1, y1) {
   return false;
 }
 export const facingDirection = (asset,instance) => instance.direction === undefined ? (asset.direction ?? null) : instance.direction;
+// Floor boundaries block a straight ray unless it crosses stairs. Empty cells,
+// bare nodes and walls retain the last height; they cannot bypass a boundary.
+export function floorBlocks(tiles, x0, y0, x1, y1) {
+  const dx=x1-x0,dy=y1-y0,nx=Math.abs(dx),ny=Math.abs(dy),sx=Math.sign(dx),sy=Math.sign(dy);
+  const floorAt=(x,y,fallback)=>isFloor(tiles[`${x},${y}`])?tiles[`${x},${y}`]:fallback;
+  const blocked=(from,to)=>from!==to&&from!=='stairs'&&to!=='stairs';
+  let x=x0,y=y0,ix=0,iy=0,height=floorAt(x0,y0,'floor');
+  while(ix<nx||iy<ny){
+    const decision=(1+2*ix)*ny-(1+2*iy)*nx;
+    if(decision===0){
+      const across=floorAt(x+sx,y,height),down=floorAt(x,y+sy,height);
+      const next=floorAt(x+sx,y+sy,height);
+      // Both sides of a touched corner must permit the transition.
+      if(blocked(height,across)||blocked(across,next)||blocked(height,down)||blocked(down,next))return true;
+      x+=sx;y+=sy;ix++;iy++;
+    }else if(decision<0){x+=sx;ix++;}else{y+=sy;iy++;}
+    const next=floorAt(x,y,height);
+    if(blocked(height,next)&&decision!==0)return true;
+    height=next;
+  }
+  return false;
+}
 export function parameterOverlay(project,root,effect,instance,level) {
   const rotation=effectRotation(project,root,effect,instance.rotation+(effect.followTokenFacing?(facingDirection(root,instance)??0):0)), cells=[];
   for(let y=0;y<level.height;y++)for(let x=0;x<level.width;x++){
-    if(effectContains(effect,x-instance.x,y-instance.y,rotation) && (effect.icon==='self' || !effect.occludedByWalls || (level.tiles[`${x},${y}`]!=='wall' && !wallBlocks(level.tiles,instance.x,instance.y,x,y))))cells.push([x,y]);
+    if(effectContains(effect,x-instance.x,y-instance.y,rotation) && (effect.icon==='self' || (!floorBlocks(level.tiles,instance.x,instance.y,x,y) && (!effect.occludedByWalls || (level.tiles[`${x},${y}`]!=='wall' && !wallBlocks(level.tiles,instance.x,instance.y,x,y))))))cells.push([x,y]);
   }
   const covered=new Set(cells.map(([x,y])=>`${x},${y}`));
   const count=level.instances.filter(i=>{

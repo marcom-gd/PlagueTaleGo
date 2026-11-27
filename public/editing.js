@@ -4,7 +4,9 @@ function remapBehaviour(b,ids,behaviours){
   if(!b.definitionId){
     if(b.stateKey)result.stateKey=ids.get(b.stateKey)||b.stateKey;
     if(b.spawnAssetId)result.spawnAssetId=ids.get(b.spawnAssetId)||b.spawnAssetId;
-    for(const key of ['eligibleAssetIds','usableAssetIds','blockAssetIds'])if(b[key])result[key]=b[key].map(id=>ids.get(id)||id);
+    if(b.type==='levelComplete')result.targetAssetId=ids.get(b.targetAssetId)||b.targetAssetId;
+    if(b.throwAssetId)result.throwAssetId=ids.get(b.throwAssetId)||b.throwAssetId;
+    for(const key of ['eligibleAssetIds','usableAssetIds','blockAssetIds','throwTargetAssetIds','hitAssetIds','distractAssetIds'])if(b[key])result[key]=b[key].map(id=>ids.get(id)||id);
     if(b.trigger)result.trigger=remapBehaviour(b.trigger,ids,behaviours);
   }
   return result;
@@ -28,6 +30,7 @@ export function copyLevel(level,makeId=uid){
   result.objectLinks=result.objectLinks.map(l=>({...l,id:makeId(),instanceIds:l.instanceIds.map(id=>ids.get(id))}));
   result.patrols=(result.patrols||[]).map(p=>{const id=makeId();ids.set(p.id,id);return {...p,id};});
   for(const i of result.instances)if(i.moveTarget?.type==='object'&&ids.has(i.moveTarget.id))i.moveTarget.id=ids.get(i.moveTarget.id);
+  for(const i of result.instances)if(i.distraction)i.distraction.sourceId=ids.get(i.distraction.sourceId)||i.distraction.sourceId;
   result.referenceOverrides={...Object.fromEntries(Object.entries(level.referenceOverrides||{}).map(([key,value])=>[key,ids.get(value)||value])),...Object.fromEntries(ids)};
   for(const i of result.instances)if(i.referenceOverrides)i.referenceOverrides=Object.fromEntries(Object.entries(i.referenceOverrides).map(([key,value])=>[key,ids.get(value)||value]));
   result.postIts=result.postIts.map(n=>({...n,id:makeId()}));return result;

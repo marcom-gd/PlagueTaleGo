@@ -9,16 +9,28 @@ import { collectItems, releaseItem, adjustStack, createPlaytestState } from './p
 import { editorDraft } from './editor-draft.js';
 import { applyTextScale, textScale } from './ui-preferences.js';
 import { copyLevel } from './editing.js';
+import { levelTabDragging } from './level-tabs.js';
+import { levelTransferUI } from './level-transfer-ui.js';
+import { playtestModes, canMoveInPlaytest, checkPlaytestMovement } from './playtest-mode.js';
+import { userTestFlow } from './user-test-flow.js';
 import { behaviourEditor } from './behaviour-editor.js';
 import { behaviourNames, effectActions } from './behaviour-schema.js';
 import {behaviourChip,behaviourHierarchy} from './behaviour-ui.js';
 import {workshopPanels} from './workshop-panels.js';
 import {behaviourDragging,behaviourDropTarget,clearBehaviourDrop} from './behaviour-drag.js';
 import { createSequence, captureSequence, nextTurn, previousTurn, validateSequence, eventTurn } from './turn-sequence.js';
+import {gameOutcome,outcomeMessages} from './game-outcomes.js';
 import { availableUses, useObject, eventsAdvanceTurn, movementEvents } from './behaviours.js';
+import { availableThrows, throwObject } from './throw-object.js';
+import { throwingUI, throwIcon } from './throwing-ui.js';
 import { checkMovement, effectOverlay } from './behaviour-areas.js';
 import { startingInventoryEditor } from './starting-inventory-editor.js';
-import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles, isClosedPatrol, appendPatrolNode } from './model.js';
+import {dropCarriedItem,interactionOwners,releaseMissingCarriers} from './carried-items.js';
+import {carriedBadges} from './carried-ui.js';
+import {countdown,syncLifetimes} from './lifetimes.js';
+import {serverSupportsEditor,serverUpdateMessage} from './server-compatibility.js';
+import { floorVariants, isFloor, hasNode, nodeCells, paintLevelTiles, isClosedPatrol, appendPatrolNode, canConnectNodes } from './model.js';
+import { parameterLayers, parameterLayer } from './model.js';
 const $ = s => document.querySelector(s);
 let uiTextScale = 100;
 try { uiTextScale = textScale(localStorage.getItem('workshop-text-scale') ?? 100); } catch {}
@@ -69,24 +81,58 @@ let room = params.get('room');
 if (!/^[\w-]{1,64}$/.test(room || '')) { room = uid().slice(0,8); history.replaceState(null,'',`?room=${room}`); }
 if(room!==room.toLowerCase()){room=room.toLowerCase();history.replaceState(null,'',`?room=${room}`);}
 const endpoint = `/api/rooms/${room}`;
+// Resolve the launch mode before exposing any editing controls.
+let appConfig;
+while (!appConfig) {
+  try {
+    const response = await fetch('/api/config', { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw Error('Configuration unavailable');
+    appConfig = await response.json();
+  } catch { await new Promise(resolve => setTimeout(resolve, 2000)); }
+}
+const userTestSession = appConfig.userTest === true;
+document.body.classList.toggle('user-test-session', userTestSession);
+if (userTestSession) {
+  document.body.classList.add('projector-mode', 'workshop-strip-collapsed');
+  document.title = 'Plague Tale GO · User Test';
+  $('.editor-heading').append($('#theme-toggle'));
+}
 const workshopProgress = initWorkshopProgress({ endpoint, toast });
-let project = newProject(), authoritative = clone(project), revision = -1, pending = [], busy = false, connected = false, serverNeedsRestart = false;
+let project = newProject(), authoritative = clone(project), revision = -1, pending = [], busy = false, connected = false, serverNeedsRestart = !serverSupportsEditor(appConfig);
 let levelId, selected = null, staged = null, tool = 'select', zoom = 1, play = null, playStart = null, historyStack = [], redoStack = [];
-let playStartRevision = null;
+let playStartRevision = null, playtestMode = userTestSession ? 'userTest' : 'sandbox';
+let testFlow = null, presence = null, testLevelStarted = 0, testUsedSandbox = false, testCompletion = 'automatic';
+const canManuallyMove = instance => !play || canMoveInPlaytest(play, instance, playtestMode);
 let turnSequence=null;
+let turnOutcome=null;
+const savedOutcomes=new Set();
 let playInitialState=null;
 let eventTurnQueued=false;
 let playerInventory=[], inventoryExpanded=false, graveyard=[], graveyardExpanded=false;
-let dragPayload = null, showAll = false, paint = null, toastTimer, didInitialFit = false;
+let dragPayload = null, paint = null, toastTimer, didInitialFit = false;
+let layerMenuOpen = false;
+const parameterLayersPreferenceKey=userTestSession?'user-test-parameter-layers':'workshop-parameter-layers';
+const visibleParameterLayers = new Set(userTestSession?['Light','Vision']:[]);
+try{
+  const saved=JSON.parse(localStorage.getItem(parameterLayersPreferenceKey));
+  if(Array.isArray(saved)){visibleParameterLayers.clear();for(const layer of saved)if(parameterLayers.includes(layer))visibleParameterLayers.add(layer);}
+}catch{}
 let notePending = null, noteTimer;
 let connectionStart = null, libraryTab='objects';
 const librarySearch={objects:'',atomic:''};
 const panels=workshopPanels({onChange:tab=>{libraryTab=tab;renderLibrary();}});
+const throwing=throwingUI({getState:()=>({project:play,inventory:playerInventory}),getLevel:()=>level(),art:(a,i)=>tokenArt(a,i),toast,
+  perform:(choice,destination)=>{
+    if(turnOutcome)return;
+    const before=turnState(),result=throwObject(play,playerInventory,graveyard,choice,destination);
+    play=result.project;playerInventory=result.inventory;graveyard=result.graveyard;
+    throwing.cancel();notifyPlayEvents(before,result.events,result.log);render();toast('Object thrown.');
+  }});
 behaviourDragging({isPlay:()=>!!play,dispatch,onDragEnd:()=>{suppressClickUntil=Date.now()+200;}});
 const atomicKinds={parameters:'Parameters',behaviours:'Behaviours',tags:'Tags',tokens:'Tokens'};
 const atomicFilters=new Set(Object.keys(atomicKinds)),collapsedCatalogs=new Set();
 let floorTile = 'floor';
-let patrolId=null, showPatrols=true;
+let patrolId=null, showPatrols=!userTestSession;
 const activePatrol=()=>level().patrols?.find(p=>p.id===patrolId);
 function updatePatrol(changes){if(activePatrol())return dispatch({type:'patrol.update',data:{levelId:level().id,id:patrolId,...changes}});}
 function newPatrol(){const patrol={id:uid(),name:'Patrol '+((level().patrols?.length||0)+1),color:activePatrol()?.color||'#e89750',nodes:[],hidden:false};patrolId=patrol.id;tool='patrol';staged=null;selected=null;showPatrols=true;dispatch({type:'patrol.add',data:{levelId:level().id,patrol}});}
@@ -116,11 +162,15 @@ document.addEventListener('dragover',e=>{canvasPointer={x:e.clientX,y:e.clientY}
 document.documentElement.addEventListener('pointerleave',()=>{canvasPointer=null;});
 window.addEventListener('blur',()=>{canvasPointer=null;});
 const collapsedAssets=new Set();
-const level = () => (play || project).levels.find(l => l.id === levelId) || (play || project).levels[0];
+const unavailableTestLevel=blankLevel('unavailable-user-test-level','No levels available');
+const shownLevels = () => (play || project).levels.filter(l=>!userTestSession||l.hideFromPlaytest!==true);
+const level = () => shownLevels().find(l => l.id === levelId) || shownLevels()[0] || unavailableTestLevel;
 const asset = id => (play || project).assets.find(a => a.id === id);
 const tag = id => (play || project).tags.find(t => t.id === id);
 const assetTags = a => a.tags.map(tag).filter(Boolean);
 const currentProject = () => play || project;
+levelTabDragging({host:$('#level-tabs'), getLevels:()=>currentProject().levels, isPlay:()=>!!play,
+  move:(levelId,beforeId)=>dispatch({type:'level.move',data:{levelId,beforeId}}), announce:toast});
 const tokenArt = (a,i=null) => {const visual=isState(a)?a:appearance(currentProject(),a,i);return sprite(visual.icon,visual.color,visual.variant);};
 const stateSwitch = (a,i=null) => `<button class="state-switch ${stateEnabled(currentProject(),a,i)?'enabled':''}" ${i?`data-state-instance="${esc(i.id)}"`:''} data-toggle-state="${esc(a.id)}" role="switch" aria-checked="${stateEnabled(currentProject(),a,i)}" aria-label="Enable state ${esc(a.name)}">${stateEnabled(currentProject(),a,i)?'On':'Off'}</button>`;
 const assetPath = a => a.parentId?`${assetPath(asset(a.parentId))} / ${a.name}`:a.name;
@@ -150,17 +200,22 @@ function rebuild() {
 }
 function receive(data) {
   workshopProgress.receive(data);
+  if (userTestSession && testFlow?.ready) return;
   if (data.project && (data.project.version < 3 || !Array.isArray(data.project.cardDraws))) {
     serverNeedsRestart = true; connected = false; setStatus();
     toast('Restart the workshop server, then refresh to use this update.'); return;
   }
-  if (data.project) serverNeedsRestart = false;
+  if (data.project) {
+    serverNeedsRestart = !serverSupportsEditor(appConfig);
+    if(serverNeedsRestart)toast(serverUpdateMessage);
+  }
   if (data.actionId) pending = pending.filter(p => p.actionId !== data.actionId);
   if (data.project && data.revision >= revision) { authoritative = data.project; revision = data.revision; rebuild(); }
 }
 let events, polling = false;
 function receiveUpdate(data) {
   receive(data);
+  if (userTestSession && data.project) testFlow?.start();
   if (!didInitialFit && data.project) { didInitialFit = true; requestAnimationFrame(fitBoard); }
 }
 async function poll() {
@@ -174,12 +229,10 @@ async function poll() {
 }
 async function connect() {
   try {
-    const response = await fetch('/api/config', { signal: AbortSignal.timeout(10000) });
-    if (!response.ok) throw new Error('Connection failed');
-    polling = (await response.json()).transport === 'poll';
+    polling = appConfig.transport === 'poll';
     if (polling) return poll();
     events = new EventSource(endpoint + '/events');
-    events.onopen = () => { connected = true; setStatus(); pump(); };
+    events.onopen = () => { connected = !serverNeedsRestart; setStatus(); pump(); };
     events.onerror = () => { connected = false; setStatus(); };
     events.onmessage = event => receiveUpdate(JSON.parse(event.data));
   } catch { connected = false; setStatus(); setTimeout(connect, 2000); }
@@ -202,6 +255,7 @@ async function pump() {
   finally { busy = false; if (connected && pending.length) pump(); }
 }
 function dispatch(action, {record = true} = {}) {
+  if (userTestSession && (!play || testFlow?.blocked)) return false;
   if(snapToNodes && ['instance.add','instance.update'].includes(action.type)){
     const data=action.data, item=action.type==='instance.add'?data.instance:data;
     if(item.x!==undefined || item.y!==undefined){
@@ -209,11 +263,12 @@ function dispatch(action, {record = true} = {}) {
       if(!l||!hasNode(l,[item.x??previous?.x,item.y??previous?.y].join(','))){toast('Snap to Nodes is on. Choose an existing node.');return false;}
     }
   }
-  if (serverNeedsRestart) {toast('Restart the workshop server, then refresh to use this update.');return false;}
+  if (serverNeedsRestart) {toast(serverUpdateMessage);return false;}
   // Observations and deck history are shared even while pieces are playtested privately.
-  if (play && !action.type.startsWith('postIt.') && !action.type.startsWith('card.')) {
+  if (play && (userTestSession || !action.type.startsWith('postIt.') && !action.type.startsWith('card.'))) {
+    if(turnOutcome){toast('Clear Sequence to Restart, or go to the next level.');return false;}
     try {
-      const before=turnState(),next=applyAction(play,action);checkMovement(play,next);
+      const before=turnState(),next=applyAction(play,action);checkPlaytestMovement(play,next,playtestMode);checkMovement(play,next,playerInventory);
       play=next;notifyPlayEvents(before,movementEvents(before.project,play));render();return true;
     } catch(e) { toast(e.message);return false; }
   }
@@ -235,7 +290,9 @@ function undo(redo = false) {
   dispatch({type:'project.replace',data:redo ? item.after : item.before},{record:false});
 }
 function render() {
+  renderOutcome();
   const l = level();
+  const focusedLevel = document.activeElement?.closest('#level-tabs [data-level]')?.dataset.level;
   $('#brand-icon').innerHTML = sprite('torch');
   $('#level-title').textContent = l.name;
   $('#snap-to-nodes').setAttribute('aria-pressed',String(snapToNodes));
@@ -243,35 +300,49 @@ function render() {
   $('#dimensions').textContent = `${l.width} × ${l.height} GRID`;
   $('#asset-count').textContent = (play || project).assets.filter(a=>!a.parameterId).length + (play || project).tags.length + ((play || project).behaviourLibrary?.length||0);
   $('#token-count').textContent = `${l.instances.length} token${l.instances.length === 1 ? '' : 's'} placed`;
-  $('#level-tabs').innerHTML = (play || project).levels.map((l,i) => `<button data-level="${esc(l.id)}" class="${l.id === levelId ? 'active' : ''}"><span>${String(i+1).padStart(2,'0')}</span>${esc(l.name)}</button>`).join('');
+  $('#level-tabs').innerHTML = shownLevels().map((l,i) => {
+    const state = userTestSession ? testFlow?.tabState(l.id) || 'locked' : '';
+    const hiddenIcon=l.hideFromPlaytest===true?'<svg class="level-hidden-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Hidden from User Test"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path d="m3 3 18 18"/></svg>':'';
+    return `<button data-level="${esc(l.id)}" class="${l.id === levelId ? 'active' : ''} ${state}" aria-current="${l.id === levelId}" ${state && state !== 'current' ? 'disabled' : ''} ${play||userTestSession?'':'data-reorderable="true" aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"'} title="${state==='locked'?'Complete earlier levels to unlock':state==='completed'?'Completed · thank you for your feedback':play?'Current level':'Drag to reorder · Alt+Left/Right to move'}${hiddenIcon?' · Hidden from User Test':''}"><span>${state==='locked'?'🔒':state==='completed'?'✓':String(i+1).padStart(2,'0')}</span>${esc(l.name)}${hiddenIcon}${userTestSession?'<span class="level-avatars" aria-label="Players here"></span>':''}</button>`;
+  }).join('');
+  presence?.renderLevelAvatars();
+  if (focusedLevel) [...$('#level-tabs').children].find(tab=>tab.dataset.level===focusedLevel)?.focus({preventScroll:true});
   $('#edit-mode').classList.toggle('active',!play); $('#play-mode').classList.toggle('active',!!play);
   $('#play-banner').hidden = !play; $('#tools').hidden = false;
+  $('#playtest-mode').value=playtestMode;
+  $('#play-banner span').textContent=playtestMode==='userTest'?'Move enabled objects one step to an adjacent connected node.':'Pieces & turns are private. Notes & cards are saved.';
   $('#turn-toolbar').hidden=!play;
+  if (userTestSession) {
+    const hasCompletion = play && level().instances.some(i => [asset(i.assetId), ...descendants(play, i.assetId)].some(a => a?.behaviours?.some(b => b.type === 'levelComplete' && b.enabled)));
+    $('#test-manual-finish').hidden = !play || !!turnOutcome || testFlow?.blocked || hasCompletion;
+  }
   if(play&&turnSequence){
     const turn=turnSequence.cursor;
     $('#turn-label').textContent=turn?`Turn ${turn}`:'Ready to start';
     $('#next-turn').textContent=turn?'Next turn →':'Start turn 1 →';
     $('#previous-turn').disabled=turn===0;
+    $('#next-turn').disabled=!!turnOutcome;
     $('#turn-log').disabled=!turn;
   }
   $('#canvas-wrap').classList.toggle('playtesting',!!play);
+  if(play){releaseMissingCarriers(play,playerInventory);syncLifetimes(play,playerInventory);}
   renderInventory();renderInventory(true);
   $('#create-token').disabled = !!play; $('#add-level').disabled = !!play; $('#level-settings').disabled = !!play;
   $('#undo').disabled = !historyStack.length || !!play; $('#redo').disabled = !redoStack.length || !!play;
-  $('#mode-label').innerHTML = `<span class="tiny-dot"></span>${play ? 'PRIVATE PLAYTEST' : 'EDITING CANVAS'}`;
+  $('#mode-label').innerHTML = `<span class="tiny-dot"></span>${play ? playtestModes[playtestMode].toUpperCase() : 'EDITING CANVAS'}`;
   const tools = [['select','↖','Select & move · V'],['floor','▦','Paint floor · F'],['patrol','〰','Patrol path'],['node','⊙','Paint path nodes · N'],['wall','▧','Paint walls · W'],['empty','⌫','Erase tiles · E'],['unlink','⋯','Erase connection · X'],['connect','↔','Reconnect nodes · C'],['link','⚯','Link objects · L']];
   $('#tools').innerHTML = (play?[]:tools).map(([id,icon,label]) => {
     const active=tool===id&&!staged;
     const button=`<button data-tool="${id}" class="${active?'active':''}" aria-label="${label}" data-tip="${label}" aria-pressed="${active}" ${id==='floor'?`aria-expanded="${active}" aria-controls="floor-variants"`:''}>${icon}</button>`;
     if(id!=='floor')return button;
     return `<div class="floor-tool">${button}<div id="floor-variants" class="floor-variants" role="group" aria-label="Floor type" ${active?'':'hidden'}><span class="floor-variants-title">Floor type</span>${floorVariants.map(({tile,label})=>`<button data-floor-tile="${tile}" aria-pressed="${floorTile===tile}" class="${floorTile===tile?'active':''}"><span class="floor-swatch ${tile}" aria-hidden="true"></span><span>${label}</span><span class="floor-choice-check" aria-hidden="true">${floorTile===tile?'✓':''}</span></button>`).join('')}</div></div>`;
-  }).join('') + `<div class="tool-separator"></div><button data-tool="overlays" class="${showAll ? 'active' : ''}" aria-label="Toggle all parameter overlays" data-tip="Show all parameters">◉</button>`;
+  }).join('') + `<div class="tool-separator"></div><div class="parameter-layer-tool"><button data-tool="overlays" class="${visibleParameterLayers.size ? 'active' : ''}" aria-label="Parameter layers" aria-expanded="${layerMenuOpen}" aria-controls="parameter-layer-menu" data-tip="Show parameter layers">◉</button><div id="parameter-layer-menu" class="parameter-layer-menu" role="group" aria-label="Show parameter layers on all tokens" ${layerMenuOpen?'':'hidden'}><span class="floor-variants-title">Parameter layers</span>${parameterLayers.map(layer=>`<label><input type="checkbox" data-parameter-layer="${layer}" ${visibleParameterLayers.has(layer)?'checked':''}> ${layer}</label>`).join('')}<small>Show checked layers on all tokens. Selected tokens preview all their parameters.</small></div></div>`;
   $('#tools').insertAdjacentHTML('beforeend', '<button id="toggle-patrols" aria-label="Toggle patrol visibility" aria-pressed="'+showPatrols+'" data-tip="Hide / show patrols">〰</button>');
   $('#tools').insertAdjacentHTML('beforeend','<button id="behaviour-order" aria-label="Configure behaviour resolution order" data-tip="Behaviour resolution order">⇅</button>');
   renderPatrolPanel();
-  $('#canvas-hint').innerHTML = play ? 'Drag pieces to play. Piece changes are temporary.<br><b>Post-its and card draws stay shared and saved.</b>' : staged ? `Placing ${esc(asset(staged)?.name || 'token')}.<br><b>Click a cell to place. Esc to finish.</b>` : l.instances.length ? 'Every piece is a possibility.<br><b>Select a token to inspect its parameters.</b>' : 'An empty stage for your ideas.<br><b>Start with a token, or shape the ground.</b>';
+  $('#canvas-hint').innerHTML = play ? (playtestMode==='userTest'?'Move objects with “Can Be Moved in User Test” enabled one step to an adjacent connected node.<br><b>Piece changes are private. Post-its and cards stay saved.</b>':'Drag pieces to play. Piece changes are temporary.<br><b>Post-its and card draws stay shared and saved.</b>') : staged ? `Placing ${esc(asset(staged)?.name || 'token')}.<br><b>Click a cell to place. Esc to finish.</b>` : l.instances.length ? 'Every piece is a possibility.<br><b>Select a token to inspect its parameters.</b>' : 'An empty stage for your ideas.<br><b>Start with a token, or shape the ground.</b>';
   if (!play && ['connect','unlink'].includes(tool)) $('#canvas-hint').innerHTML = `${tool==='unlink'?'Erase a connection':'Reconnect nodes'}.<br><b>${connectionStart?'Now select an adjacent node.':'Click a line, or select two adjacent nodes.'}</b>`;
-  if(!play&&!staged&&tool==='floor')$('#canvas-hint').innerHTML=`${floorVariants.find(v=>v.tile===floorTile).label} floor.<br><b>Click or drag cells to paint. F opens floor types.</b>`;
+  if(!play&&!staged&&tool==='floor')$('#canvas-hint').innerHTML=floorTile==='stairs'?'Stairs connect different floor heights.<br><b>Click or drag to paint, then add path nodes with N.</b>':`${floorVariants.find(v=>v.tile===floorTile).label} floor.<br><b>Click or drag cells to paint. F opens floor types.</b>`;
   if(!play&&tool==='patrol')$('#canvas-hint').innerHTML='Select or create a patrol, then paint existing nodes in order.<br><b>Return to S from a connected node to close the patrol.</b>';
   if(tool==='link')$('#canvas-hint').innerHTML='Click objects to include them in a link.<br><b>Choose two or more, then Create link. Esc to cancel.</b>';
   let builder=$('#link-builder');
@@ -318,19 +389,23 @@ function renderInventory(isGraveyard=false) {
   const icon=isGraveyard?'<path d="M6 22V8a6 6 0 0 1 12 0v14M3 22h18M12 5v8M9 8h6"/>':'<path d="M8 6V4a4 4 0 0 1 8 0v2M6 8 3 10v9h3m12-11 3 2v9h-3"/><rect x="6" y="6" width="12" height="16" rx="3"/><rect x="8.5" y="13" width="7" height="6" rx="1.5"/><path d="M9 10h6"/>';
   const total=entries.some(s=>s.count===0)?'∞':entries.reduce((n,s)=>n+s.count,0);
   panel.innerHTML=`<button id="${key}-toggle" class="inventory-header" aria-expanded="${expanded}" aria-controls="${key}-contents" title="${title} · drop objects here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">${icon}</svg><span>${title}</span><small>${total}</small><span aria-hidden="true">${expanded?'▾':'▸'}</span></button><div id="${key}-contents" ${expanded?'':'hidden'}><p class="inventory-hint">${isGraveyard?'Drop canvas pieces here to remove them from play. Drag back to restore.':'Drop canvas or library objects. 0 = ∞ (infinite). Drag out to place one.'}</p><ul>${entries.map(stack=>{
-    const i=stack.items[0],a=asset(stack.assetId),name=esc(a?.name||'Object'),quantity=stack.count===0?'∞':stack.count;
-    return `<li><div class="inventory-item" data-${key}-item="${esc(stack.id)}" draggable="true" tabindex="0" role="button" aria-label="${name}: ${stack.count===0?'infinite':quantity} items, drag onto canvas"><span class="inventory-icon">${a?tokenArt(a,i):''}<span class="stack-count" aria-label="${stack.count===0?'Infinite supply':quantity+' items'}">${quantity}</span></span><span>${name}</span></div>${isGraveyard?'':`<div class="inventory-quantity"><button data-stack-adjust="${esc(stack.id)}" data-delta="-1" aria-label="Decrease ${name} quantity" title="Decrease quantity · 0 = infinite" ${stack.count===0?'disabled':''}>−</button><button data-stack-adjust="${esc(stack.id)}" data-delta="1" aria-label="Increase ${name} quantity" title="Increase quantity">+</button></div>`}<button data-discard-${key}="${esc(stack.id)}" aria-label="Remove ${name} from ${key}" title="Remove stack">×</button></li>`;
+    const i=stack.items[0],a=asset(stack.assetId),name=esc(a?appearance(currentProject(),a,i).name:'Object'),quantity=stack.count===0?'∞':stack.count,individual=stack.items.some(i=>i.carriedBy||i.lifetimeProgress),clock=countdown(i);
+    const carrier=i.carriedBy&&currentProject().levels.find(l=>l.id===i.carriedBy.levelId)?.instances.find(p=>p.id===i.carriedBy.instanceId);
+    const status=[carrier?`Carried by ${asset(carrier.assetId)?.name}`:'',clock?`${clock.remaining} / ${clock.total} turns`:''].filter(Boolean).join(' · ');
+    return `<li><div class="inventory-item" data-${key}-item="${esc(stack.id)}" draggable="true" tabindex="0" role="button" aria-label="${name}: ${stack.count===0?'infinite':quantity} items, drag onto canvas"><span class="inventory-icon">${a?tokenArt(a,i):''}<span class="stack-count" aria-label="${stack.count===0?'Infinite supply':quantity+' items'}">${quantity}</span></span><span>${name}${status?`<small class="inventory-carry-status">${esc(status)}</small>`:''}</span></div>${isGraveyard?'':`<div class="inventory-quantity"><button data-stack-adjust="${esc(stack.id)}" data-delta="-1" aria-label="Decrease ${name} quantity" title="Decrease quantity · 0 = infinite" ${stack.count===0||individual?'disabled':''}>−</button><button data-stack-adjust="${esc(stack.id)}" data-delta="1" aria-label="Increase ${name} quantity" title="Increase quantity" ${individual?'disabled':''}>+</button></div>`}<button data-discard-${key}="${esc(stack.id)}" aria-label="Remove ${name} from ${key}" title="Remove stack">×</button></li>`;
   }).join('')}</ul>${entries.length?'':`<p class="inventory-empty">${isGraveyard?'No pieces removed yet.':'Your backpack is empty.'}</p>`}</div>`;
 }
 function collectInInventory(payload,isGraveyard=false) {
-  if(!play||isGraveyard&&payload.type!=='instance')return;
+  if(!play||turnOutcome||isGraveyard&&payload.type!=='instance')return;
   try{
     if(notePending)saveNote();
     const before=turnState(),oldIds=new Set(playerInventory.flatMap(s=>s.items.map(i=>i.id)));
     const result=collectItems(play,isGraveyard?graveyard:playerInventory,level().id,payload);if(!result)return;
+    checkPlaytestMovement(play,result.project,playtestMode);
+    if(playtestMode==='userTest'&&payload.type==='asset'&&!canMoveInPlaytest(play,{assetId:payload.id},playtestMode))throw Error('Only objects enabled for User Test can be added to the inventory.');
     play=result.project;
     if(isGraveyard){graveyard=result.inventory;graveyardExpanded=true;}else{playerInventory=result.inventory;inventoryExpanded=true;}
-    if(!isGraveyard)notifyPlayEvents(before,playerInventory.flatMap(s=>s.items).filter(i=>!oldIds.has(i.id)).map(instance=>({type:'inventoryAdded',levelId:level().id,instanceId:instance.id,instance})));
+    notifyPlayEvents(before,isGraveyard?[]:playerInventory.flatMap(s=>s.items).filter(i=>!oldIds.has(i.id)).map(instance=>({type:'inventoryAdded',levelId:level().id,instanceId:instance.id,instance})));
     selected=null;render();
   }catch(error){toast(error.message);}
 }
@@ -344,7 +419,7 @@ function renderBoard() {
   for (let y = 0; y < l.height; y++) for (let x = 0; x < l.width; x++) {
     const key=`${x},${y}`,tile=preview.tiles[key],node=hasNode(preview,key);
     const floorVariant=floorVariants.find(v=>v.tile===tile);
-    html += `<div class="cell ${isFloor(tile)?'floor ':''}${tile || (node?'node':'')}" role="gridcell" tabindex="0" data-x="${x}" data-y="${y}" aria-label="Column ${x+1}, row ${y+1}, ${floorVariant?floorVariant.label.toLowerCase()+' floor':tile || (node?'node':'empty')}${node&&isFloor(tile)?', path node':''}">`;
+    html += `<div class="cell ${isFloor(tile)?'floor ':''}${tile || (node?'node':'')}" role="gridcell" tabindex="0" data-x="${x}" data-y="${y}" aria-label="Column ${x+1}, row ${y+1}, ${tile==='stairs'?'stairs':floorVariant?floorVariant.label.toLowerCase()+' floor':tile || (node?'node':'empty')}${node&&isFloor(tile)?', path node':''}">`;
     if (node) html += `<span class="node-dot ${connectionStart===key?'connection-start':''}"></span>`;
     html += '</div>';
   }
@@ -353,7 +428,7 @@ function renderBoard() {
     const [x,y] = from.split(',').map(Number);
     for (const [nx,ny] of [[x+1,y],[x,y+1]]) {
       const to = `${nx},${ny}`;
-      if (!adjacentNodes(preview,from,to)) continue;
+      if (!canConnectNodes(preview,from,to)) continue;
       const connected = nodesConnected(preview,from,to), editing = !play && ['connect','unlink'].includes(tool);
       if (connected || editing) lines += `<line x1="${x+.5}" y1="${y+.5}" x2="${nx+.5}" y2="${ny+.5}" class="${connected?'':'broken'}"/>`;
       if (editing) handles += `<button class="link-handle ${ny!==y?'vertical':''}" data-link-from="${from}" data-link-to="${to}" style="--x:${(x+nx)/2+.5};--y:${(y+ny)/2+.5}" aria-label="${tool==='unlink'?'Erase':'Restore'} connection from column ${x+1}, row ${y+1} to column ${nx+1}, row ${ny+1}" title="${tool==='unlink'?'Erase':'Restore'} connection"></button>`;
@@ -364,25 +439,41 @@ function renderBoard() {
   for (const i of l.instances) {
     const a = asset(i.assetId); if (!a || !assetIsActive(currentProject(),a.id,i)) continue;
     const isSelected = selected?.type === 'instance' && (selected.id === i.id || editingTools?.isSelected(i.id));
-    if (showAll || isSelected) html += overlays(a,i,l);
+    if (visibleParameterLayers.size || isSelected) html += overlays(a,i,l,isSelected);
     const children = activeDescendants(currentProject(),a.id,i);
     const facing=facingDirection(a,i);
     const stack = l.instances.filter(n => n.x === i.x && n.y === i.y).indexOf(i);
-    html += `<button class="piece ${i.locked?'scenery-locked':''} ${isSelected?'selected':''} ${tool==='link'&&linkDraft.includes(i.id)?'link-picked':''}" data-instance="${esc(i.id)}" draggable="${tool!=='link'&&!i.locked}" title="${esc(a.name)} · ${(i.rotation+(a.rotation||0))%360}°" aria-label="${esc(a.name)} at ${i.x+1}, ${i.y+1}, rotated ${(i.rotation+(a.rotation||0))%360} degrees" style="--x:${i.x};--y:${i.y};--rotation:${(i.rotation+(a.rotation||0))%360}deg;${stack ? `margin-left:${stack*5}px;margin-top:${stack*-4}px;` : ''}">${tokenArt(a,i)}${i.patrolColor?`<span class="instance-color-dot" style="background:${i.patrolColor}" title="Patrol color ${i.patrolColor}"></span>`:''}${facing===null?'':`<span class="direction" data-facing="${facing}" aria-hidden="true">▴</span>`}${children.length ? `<span class="child-count">${children.length}</span>` : ''}</button>`;
+    html += `<button class="piece ${i.locked?'scenery-locked':''} ${isSelected?'selected':''} ${tool==='link'&&linkDraft.includes(i.id)?'link-picked':''}" data-instance="${esc(i.id)}" draggable="${tool!=='link'&&!i.locked&&canManuallyMove(i)}" title="${esc(a.name)} · ${(i.rotation+(a.rotation||0))%360}°" aria-label="${esc(a.name)} at ${i.x+1}, ${i.y+1}, rotated ${(i.rotation+(a.rotation||0))%360} degrees" style="--x:${i.x};--y:${i.y};--rotation:${(i.rotation+(a.rotation||0))%360}deg;${stack ? `margin-left:${stack*5}px;margin-top:${stack*-4}px;` : ''}">${tokenArt(a,i)}${i.patrolColor?`<span class="instance-color-dot" style="background:${i.patrolColor}" title="Patrol color ${i.patrolColor}"></span>`:''}${facing===null?'':`<span class="direction" data-facing="${facing}" aria-hidden="true">▴</span>`}${children.length ? `<span class="child-count">${children.length}</span>` : ''}</button>`;
   }
   if(play){
-    const uses=availableUses(play,l),groups=new Map();
+    html+=carriedBadges(play,l,playerInventory,tokenArt,esc);
+    for(const held of interactionOwners(play,l,playerInventory).filter(i=>i.carriedBy))if(visibleParameterLayers.size||selected?.id===held.carriedBy.instanceId)html+=overlays(asset(held.assetId),held,l,selected?.id===held.carriedBy.instanceId);
+    const uses=availableUses(play,l,playerInventory),groups=new Map();
     for(const use of uses){const i=l.instances.find(i=>i.id===use.usedId),key=`${i.x},${i.y}`;if(!groups.has(key))groups.set(key,{i,count:0});groups.get(key).count++;}
-    for(const {i,count} of groups.values())html+=`<button class="use-object-badge" data-use-object="${esc(i.id)}" style="--x:${i.x};--y:${i.y}" aria-label="Use ${esc(asset(i.assetId).name)}${count>1?' · choose object or action':''}" title="${count>1?'Choose an object or Use action':'Use '+esc(asset(i.assetId).name)}"><span aria-hidden="true">👋</span></button>`;
+    for(const {i,count} of groups.values()){
+      const pickup=uses.filter(u=>u.usedId===i.id).every(u=>u.triggerType==='pickUp'),label=`${pickup?'Pick up':'Use'} ${asset(i.assetId).name}`;
+      html+=`<button class="use-object-badge" data-use-object="${esc(i.id)}" style="--x:${i.x};--y:${i.y}" aria-label="${esc(label)}${count>1?' · choose object or action':''}" title="${count>1?'Choose an object or action':esc(label)}"><span aria-hidden="true">${pickup?'＋':'👋'}</span></button>`;
+    }
+    const throwGroups=new Map();
+    for(const choice of availableThrows(play,l,playerInventory)){
+      const i=l.instances.find(i=>i.id===choice.instanceId),key=`${i.x},${i.y}`;
+      if(!throwGroups.has(key))throwGroups.set(key,{i,choices:[]});throwGroups.get(key).choices.push(choice);
+    }
+    for(const [key,{i,choices}] of throwGroups){
+      const available=choices.some(c=>c.available),label=choices.length>1?'Choose a Throw Object action':`Throw ${asset(choices[0].throwAssetId).name}`;
+      html+=`<button class="use-object-badge throw-object-badge ${groups.has(key)?'beside-use':''}" data-throw-object="${esc(i.id)}" style="--x:${i.x};--y:${i.y}" aria-label="${esc(label)}" aria-disabled="${!available}" title="${esc(available?label:label+' · object required in player inventory')}">${throwIcon}</button>`;
+    }
   }
   board.innerHTML = html+objectLinkArtwork(l);
+  throwing.render();
   $('#zoom-label').textContent = `${Math.round(zoom*100)}%`;
 }
-function overlays(a,i,l) {
+function overlays(a,i,l,isSelected) {
   const effects = [a,...activeDescendants(currentProject(),a.id,i)].filter(a => parameterIcons.includes(a.icon));
   let result = '';
   for (const effect of effects) {
-    const overlay=effect.behaviours?.some(b=>b.type==='blockNode'&&b.enabled)?parameterOverlay(currentProject(),a,effect,i,l):effectOverlay(currentProject(),a,effect,i,l);
+    if(!isSelected&&!visibleParameterLayers.has(parameterLayer(effect)))continue;
+    const overlay=effect.behaviours?.some(b=>b.type==='blockNode'&&b.enabled)?parameterOverlay(currentProject(),a,effect,i,l):effectOverlay(currentProject(),a,effect,i,l,play?playerInventory:[]);
     for(const [x,y] of overlay.cells)result += `<span class="overlay-cell" style="--x:${x};--y:${y};--overlay:${overlay.color}"></span>`;
   }
   return result;
@@ -406,20 +497,21 @@ function renderLibraryView(view) {
   library.setAttribute('aria-labelledby',`library-tab-${view}`);
   const row=(a,depth=0)=>{
     const state=isState(a), visual=appearance(p,a), branch=p.assets.some(b=>b.parentId===a.id)||a.tags.length||a.behaviours?.length;
-    return `<div class="asset-row ${depth?'child':''} ${state?'state-row':''} ${state&&!a.enabled?'state-disabled':''} ${selected?.type==='asset'&&selected.id===a.id?'active':''}" data-asset="${esc(a.id)}" draggable="${!play||!isState(a)}" style="--depth:${depth};margin-left:${Math.min(depth,8)*14}px" tabindex="0" role="button" aria-label="${esc(a.name)}, ${state?'state':isParameter(a)?'parameter':'token'}">${tree&&branch?`<button class="tree-disclosure" data-collapse-asset="${esc(a.id)}" aria-label="${collapsedAssets.has(a.id)?'Expand':'Collapse'} ${esc(a.name)}" aria-expanded="${!collapsedAssets.has(a.id)}">${collapsedAssets.has(a.id)?'▸':'▾'}</button>`:'<span class="tree-spacer"></span>'}<div class="asset-icon" style="transform:rotate(${a.rotation||0}deg)">${tokenArt(a)}</div><div class="asset-copy"><strong>${esc(a.name)}</strong><small>${state?'STATE · '+(a.enabled?'enabled':'disabled'):isParameter(a)?iconNames[a.icon]+(a.icon==='self'?' · occupied cell':' · '+a.range+' cells'):iconVariants[visual.icon][visual.variant||defaultVariant(visual.icon)]}</small></div>${state?stateSwitch(a):`<button class="asset-place" data-rotate-asset="${esc(a.id)}" title="Rotate shared definition 90° · updates all placements" aria-label="Rotate ${esc(a.name)} 90 degrees" ${play?'disabled':''}>↻</button><button class="asset-place" data-place="${esc(a.id)}" aria-label="Place ${esc(a.name)}" ${play?'disabled':''}>＋</button>`}</div>`;
+    const collapsed=!search&&collapsedAssets.has(a.id);
+    return `<div class="asset-row ${depth?'child':''} ${state?'state-row':''} ${state&&!a.enabled?'state-disabled':''} ${selected?.type==='asset'&&selected.id===a.id?'active':''}" data-asset="${esc(a.id)}" draggable="${!play||!isState(a)}" style="--depth:${depth};margin-left:${Math.min(depth,8)*14}px" tabindex="0" role="button" aria-label="${esc(a.name)}, ${state?'state':isParameter(a)?'parameter':'token'}">${tree&&branch?`<button class="tree-disclosure" data-collapse-asset="${esc(a.id)}" aria-label="${collapsed?'Expand':'Collapse'} ${esc(a.name)}" aria-expanded="${!collapsed}">${collapsed?'▸':'▾'}</button>`:'<span class="tree-spacer"></span>'}<div class="asset-icon" style="transform:rotate(${a.rotation||0}deg)">${tokenArt(a)}</div><div class="asset-copy"><strong>${esc(a.name)}</strong><small>${state?'STATE · '+(a.enabled?'enabled':'disabled'):isParameter(a)?iconNames[a.icon]+(a.icon==='self'?' · occupied cell':' · '+a.range+' cells'):iconVariants[visual.icon][visual.variant||defaultVariant(visual.icon)]}</small></div>${state?stateSwitch(a):`<button class="asset-place" data-rotate-asset="${esc(a.id)}" title="Rotate shared definition 90° · updates all placements" aria-label="Rotate ${esc(a.name)} 90 degrees" ${play?'disabled':''}>↻</button><button class="asset-place" data-place="${esc(a.id)}" aria-label="Place ${esc(a.name)}" ${play?'disabled':''}>＋</button>`}</div>`;
   };
   const show=(a,depth=0)=>{
-    if(search&&!matching(a)&&!activeDescendants(p,a.id).some(matching))return '';
     let html=row(a,depth);
-    if(collapsedAssets.has(a.id)&&!search || (isState(a)&&!a.enabled))return html;
+    if(!search&&(collapsedAssets.has(a.id)||(isState(a)&&!a.enabled)))return html;
     if(tree) {
-      html+=assetTags(a).filter(t=>!search||matching(a)||[t.name,t.rule].join(' ').toLowerCase().includes(search)).map(t=>`<div class="tree-tag" style="margin-left:${(Math.min(depth,8)+1)*14+26}px">${tagChip(t)}</div>`).join('');
+      html+=assetTags(a).map(t=>`<div class="tree-tag" style="margin-left:${(Math.min(depth,8)+1)*14+26}px">${tagChip(t)}</div>`).join('');
       html+=(a.behaviours||[]).map(b=>`<div class="tree-tag tree-behaviour" style="margin-left:${(Math.min(depth,8)+1)*14+26}px">${behaviourChip(p,b,{assetId:a.id,play:!!play})}</div>`).join('');
       html+=p.assets.filter(b=>b.parentId===a.id).map(b=>show(b,depth+1)).join('');
     }
     return html;
   };
-  let html=tree?p.assets.filter(a=>!a.parentId&&!isState(a)&&!isParameter(a)).map(a=>show(a)).join(''):Object.entries(atomicKinds).filter(([id])=>atomicFilters.has(id)).map(([id,label])=>{
+  // Search selects whole object trees, including inactive states and sibling branches.
+  let html=tree?p.assets.filter(a=>!a.parentId&&!isState(a)&&!isParameter(a)&&(!search||[a,...descendants(p,a.id)].some(matching))).map(a=>show(a)).join(''):Object.entries(atomicKinds).filter(([id])=>atomicFilters.has(id)).map(([id,label])=>{
     const entries=id==='tags'?p.tags.filter(t=>!search||[t.name,t.rule].join(' ').toLowerCase().includes(search)):id==='behaviours'?(p.behaviourLibrary||[]).filter(b=>!search||[b.name,b.rule,behaviourNames[b.behaviour.type]].join(' ').toLowerCase().includes(search)):p.assets.filter(a=>!isState(a)&&(id==='parameters'?isParameter(a)&&!a.parameterId:!isParameter(a))&&matching(a));
     const content=id==='tags'?`<div class="catalog-tags">${entries.map(t=>`<button class="tag" data-edit-tag="${esc(t.id)}" draggable="${!play}" data-tag="${esc(t.id)}" style="--tag-color:${t.color}" title="${esc(t.rule||'Edit tag')}">${esc(t.name)}</button>`).join('')}</div>`:id==='behaviours'?`<div class="catalog-behaviours">${entries.map(b=>`<div class="behaviour-catalog-item">${behaviourChip(p,b.behaviour,{definition:b,catalog:true,play:!!play})}<button class="behaviour-attach" data-attach-behaviour="${esc(b.id)}" aria-label="Attach ${esc(b.name)} to selected item" title="Attach to selected item" ${play||!activeAsset()?'disabled':''}>＋</button></div>`).join('')}</div>`:entries.map(a=>row(a)).join('');
     return `<section class="atomic-catalog"><div class="atomic-catalog-heading"><button data-collapse-catalog="${id}" aria-expanded="${!collapsedCatalogs.has(id)}">${collapsedCatalogs.has(id)?'▸':'▾'} ${label} <span>${entries.length}</span></button><button data-create-atomic="${id}" aria-label="Create ${label.toLowerCase()}" ${play?'disabled':''}>＋</button></div>${collapsedCatalogs.has(id)&&!search?'':content||'<p class="pool-empty">'+(search?'No matches.':'Use + to create a building block.')+'</p>'}</section>`;
@@ -453,9 +545,11 @@ function renderInspector() {
   const p=currentProject(), active=assetIsActive(p,a.id,i), children=activeDescendants(p,a.id,i), states=p.assets.filter(b=>b.parentId===a.id&&isState(b));
   const tags=[...new Set((active?[a,...children]:[]).flatMap(b=>b.tags))].map(tag).filter(Boolean);
   el.innerHTML=`<div class="eyebrow">${i?'PLACED TOKEN':isState(a)?'STATE DEFINITION':'TOKEN DEFINITION'}</div><div class="inspector-top"><div class="asset-icon">${tokenArt(a,i)}</div><div><h3>${esc(a.name)}</h3><small>${i?`CELL ${i.x+1}, ${i.y+1} · ${(i.rotation+(a.rotation||0))%360}° ICON ROTATION${facingDirection(a,i)===null?'':` · FACING ${['UP','RIGHT','DOWN','LEFT'][facingDirection(a,i)/90]}`}`:a.parentId?esc(assetPath(a)):'REUSABLE BUILDING BLOCK'}</small></div></div><p>${esc(a.rule||'No rule yet. What should this token mean?').replace(/\n/g,'<br>')}</p>${isState(a)?stateSwitch(a):''}${!active?'<p class="state-inactive-note">This branch is disabled. Its contents are hidden from the active object.</p>':''}<div class="tags">${tags.map(tagChip).join('')}</div>${isParameter(a)&&a.icon!=='self'?`<div class="field"><label for="quick-range">${a.icon==='area'?'Radius':a.icon==='cross'?'Arm length':'Length'} <span id="quick-range-value">${a.range}</span> cells</label><input id="quick-range" type="range" min="1" max="12" value="${a.range}" ${play?'disabled':''}></div>`:''}${['cone','rectangle'].includes(a.icon)?`<div class="field"><label for="quick-width">Width in cells${a.icon==='cone'?' · far edge':''}</label><input id="quick-width" type="number" min="1" max="${a.icon==='cone'?11:12}" step="${a.icon==='cone'?2:1}" value="${a.icon==='cone'?2*Math.floor(((a.width??3)-1)/2)+1:(a.width??3)}" ${play?'disabled':''}></div>`:''}${states.length?`<div class="nested-title">STATES · ${i?'THIS PIECE ONLY':'DEFINITION DEFAULTS'}</div><label class="check-row"><input type="checkbox" data-exclusive-states="${esc(a.id)}" ${a.exclusiveStates?'checked':''} ${play?'disabled':''}> Mutually exclusive states (shared definition)</label>${i?'<button id="reset-piece-states">Use definition defaults</button>':''}`:''}${states.length>1?`<p class="state-help">${a.exclusiveStates?'Only one sibling state can be enabled.':'States combine; the last enabled state supplies the icon.'} ${i?'Switches here affect only this placement.':''}</p>`:''}${active&&p.assets.some(b=>b.parentId===a.id)?compositionTree(a,0,i):''}${!isParameter(a)?`<div class="inspector-actions"><button data-create-kind="state" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Add state</button><button data-create-kind="token" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Add token</button><button data-create-kind="parameter" data-parent="${esc(a.id)}" ${play?'disabled':''}>＋ Parameter</button></div>`:''}${i?`<div class="field"><label for="instance-note">Placement notes</label><textarea id="instance-note" data-instance-note="${esc(i.id)}" maxlength="4000">${esc(i.note||'')}</textarea></div>`:''}<div class="inspector-actions">${i?'<button id="rotate-piece">↻ Rotate icon 90°</button><button id="rotate-facing">▴ Rotate facing</button><button id="duplicate-piece">⧉ Duplicate</button>':!isState(a)?`<button id="place-selected" ${play?'disabled':''}>＋ Place in level</button>`:''}<button id="edit-definition" ${play?'disabled':''}>Edit ${isState(a)?'state':'token'}</button></div><div class="inspector-actions"><button class="danger" id="delete-selected" ${play&&!i?'disabled':''}>${i?'Remove from level':isState(a)?'Delete state':'Delete token'}</button>${!i&&a.parentId&&!isState(a)?'<button id="detach-token">↳ Detach</button>':''}</div>`;
+  if(!isState(a)&&!isParameter(a))el.insertAdjacentHTML('beforeend',`<label class="check-row"><input type="checkbox" data-user-test-movable="${esc(a.id)}" ${a.canBeMovedInUserTest?'checked':''} ${play?'disabled':''}> Can Be Moved in User Test</label><p>Shared object definition · off by default.</p>`);
   const parent=!i&&a.parentId?asset(a.parentId):null;
   if(parent)el.insertAdjacentHTML('afterbegin',`<button type="button" class="definition-back" data-inspect-child="${esc(parent.id)}" title="Back to parent definition: ${esc(parent.name)}" aria-label="Back to parent definition: ${esc(parent.name)}"><span aria-hidden="true">←</span><span>Back to ${esc(parent.name)}</span></button>`);
   if(isParameter(a)) {
+    el.querySelector('.inspector-top').insertAdjacentHTML('afterend',`<p>Parameter layer: <b>${esc(parameterLayer(a))}</b></p>`);
     $('#edit-definition').textContent='Edit parameter';
     if(!i){el.querySelector('.eyebrow').textContent=a.parameterId?'SHARED PARAMETER USE':'PARAMETER DEFINITION';$('#delete-selected').textContent=a.parameterId?'Detach parameter':'Delete parameter';}
   }
@@ -471,7 +565,7 @@ function renderInspector() {
 function objectLinkArtwork(l) {
   let lines='',labels='';
   for(const link of l.objectLinks||[]) {
-    if(!showAll && !(selected?.type==='instance'&&link.instanceIds.includes(selected.id)) && !(selected?.type==='objectLink'&&selected.id===link.id))continue;
+    if(!visibleParameterLayers.size && !(selected?.type==='instance'&&link.instanceIds.includes(selected.id)) && !(selected?.type==='objectLink'&&selected.id===link.id))continue;
     const members=link.instanceIds.map(id=>l.instances.find(i=>i.id===id)).filter(i=>i&&assetIsActive(currentProject(),i.assetId));
     if(members.length<2)continue;
     let longest=-1,labelX=0,labelY=0;
@@ -540,6 +634,7 @@ function removeSelected() {
 }
 function stage(id) { if(play)return;if(isState(asset(id)))return toast('Place the parent token instead of a state.'); staged=id; selected={type:'asset',id};tool='select';connectionStart=null; render();toast(`Click a cell to place ${asset(id).name}.`); }
 function moveTargetLabel(instance){
+  if(instance.distraction){const d=instance.distraction,wait=d.phase==='return'?d.returnWait:d.approachWait;if(wait>0)return `Distraction · ${d.phase==='return'?'returning':'approaching'} in ${wait} turn${wait===1?'':'s'}`;return d.phase==='return'?`Distraction · returning to ${d.origin.x+1}, ${d.origin.y+1}`:`Distraction · approaching ${asset(level().instances.find(i=>i.id===d.sourceId)?.assetId)?.name||'impact position'}`;}
   const target=instance.moveTarget;
   if(!target||target.type==='self')return 'Self';
   if(target.type==='tags')return 'Tags: '+(target.tagIds.map(id=>currentProject().tags.find(t=>t.id===id)?.name||id).join(', ')||'none');
@@ -547,9 +642,45 @@ function moveTargetLabel(instance){
   const item=level().instances.find(i=>i.id===target.id);
   return item?`${asset(item.assetId)?.name} · ${item.x+1}, ${item.y+1}`:'Missing object';
 }
-const turnState=()=>({project:play,inventory:playerInventory,graveyard,levelId:level().id});
+const turnState=()=>({project:play,inventory:playerInventory,graveyard,levelId:level().id,...(turnOutcome?{outcome:turnOutcome}:{})});
+function renderOutcome(){
+  if(play&&!eventTurnQueued&&!turnOutcome)turnOutcome=gameOutcome(play,graveyard,level().id);
+  const outcome=play&&turnOutcome,overlay=$('#game-outcome');
+  overlay.hidden=!outcome || userTestSession && testFlow?.blocked;
+  $('#clear-turns').classList.toggle('restart-highlight',outcome?.type==='gameOver');
+  for(const selector of ['#board','#player-inventory','#player-graveyard','#definition-contents'])$(selector).inert=!!outcome;
+  if(!outcome)return;
+  throwing.cancel();
+  $('#game-outcome-title').textContent=outcome.type==='gameOver'?'Game Over':'Level Complete';
+  $('#game-outcome-message').textContent=outcomeMessages[outcome.type];
+  const next=play.levels[play.levels.findIndex(l=>l.id===outcome.levelId)+1];
+  $('#next-level').hidden=outcome.type!=='levelComplete'||!next&&!userTestSession;
+  $('#next-level').textContent=userTestSession?'Share feedback →':'Go to next level →';
+  $('#game-outcome-detail').textContent=userTestSession?(outcome.type==='levelComplete'?'Enjoy your little victory! A few quick thoughts, then onward.':'Take a breath. Reset this level whenever you’re ready.'):outcome.type==='levelComplete'&&!next?'You GOt through every level! Clear Sequence to play again.':'Your sequence has been saved automatically.';
+  // Re-renders and turn navigation must not repeatedly download the same ending.
+  const key=JSON.stringify([turnSequence?.cursor,outcome]);
+  if(!userTestSession&&!savedOutcomes.has(key)){
+    savedOutcomes.add(key);saveTurns();
+  }
+}
+function nextLevel(){
+  if(!play||turnOutcome?.type!=='levelComplete')return;
+  if(userTestSession){$('#game-outcome').hidden=true;return testFlow?.finish(testCompletion);}
+  const next=play.levels[play.levels.findIndex(l=>l.id===turnOutcome.levelId)+1];
+  if(!next)return;
+  saveNote();turnOutcome=null;levelId=next.id;
+  // Other levels also resolve turns, so restore the saved design for a fresh start.
+  playInitialState=createPlaytestState(turnSequence.frames[0].project,next.id);
+  play=clone(playInitialState.project);playStart=clone(play);playerInventory=clone(playInitialState.inventory);graveyard=[];inventoryExpanded=playerInventory.length>0;savedOutcomes.clear();
+  turnSequence=createSequence(turnState());restoreTurn();fitBoard();
+}
 function notifyPlayEvents(before,events,actionLog=[]){
-  if(!play||eventTurnQueued||!eventsAdvanceTurn(before.project,play,events))return;
+  if(!play||eventTurnQueued)return;
+  if(!eventsAdvanceTurn(before.project,play,events)){
+    const outcome=gameOutcome(play,graveyard,level().id);
+    if(outcome){turnSequence=eventTurn(turnSequence,before,{...turnState(),outcome},actionLog);turnOutcome=outcome;}
+    return;
+  }
   const session=playStart,prior=clone(before);eventTurnQueued=true;
   queueMicrotask(()=>{
     eventTurnQueued=false;if(!play||session!==playStart)return;
@@ -558,34 +689,60 @@ function notifyPlayEvents(before,events,actionLog=[]){
   });
 }
 function useCanvasObject(id){
-  if(!play)return;
+  if(!play||turnOutcome)return;
   const anchor=level().instances.find(i=>i.id===id),stacked=new Set(level().instances.filter(i=>anchor&&i.x===anchor.x&&i.y===anchor.y).map(i=>i.id));
-  const choices=availableUses(play,level()).filter(use=>stacked.has(use.usedId));
+  const choices=availableUses(play,level(),playerInventory).filter(use=>stacked.has(use.usedId));
   const perform=choice=>{
     try{
       const before=turnState(),result=useObject(play,playerInventory,graveyard,choice);
       play=result.project;playerInventory=result.inventory;graveyard=result.graveyard;
-      notifyPlayEvents(before,result.events,result.log);render();toast('Used object.');
+      notifyPlayEvents(before,result.events,result.log);render();toast(result.log[0]?.message||'Used object.');
     }catch(error){toast(error.message);}
   };
   if(choices.length===1)return perform(choices[0]);
   if(!choices.length)return toast('This object is no longer usable from here.');
-  showDialog(modal('Choose a Use action',`<div class="use-action-choices">${choices.map((choice,n)=>{const owner=level().instances.find(i=>i.id===choice.instanceId),used=level().instances.find(i=>i.id===choice.usedId);return `<button data-use-choice="${n}">${esc(asset(used.assetId).name)} · ${esc(used.id.slice(0,5))}<small>${esc(asset(owner.assetId).name)} / ${effectActions[choice.action]||behaviourNames[choice.triggerType]}</small></button>`;}).join('')}</div>`));
+  showDialog(modal('Choose a Use action',`<div class="use-action-choices">${choices.map((choice,n)=>{const owner=interactionOwners(play,level(),playerInventory).find(i=>i.id===choice.instanceId),used=level().instances.find(i=>i.id===choice.usedId),collector=level().instances.find(i=>i.id===choice.collectorId);return `<button data-use-choice="${n}">${esc(asset(used.assetId).name)} · ${esc(used.id.slice(0,5))}<small>${esc(asset((collector||owner).assetId).name)} / ${effectActions[choice.action]||behaviourNames[choice.triggerType]}</small></button>`;}).join('')}</div>`));
   $('#dialog-content').querySelectorAll('[data-use-choice]').forEach(button=>button.onclick=()=>{closeDialog();perform(choices[Number(button.dataset.useChoice)]);});
 }
+function dropCanvasItem(id){
+  if(!play||turnOutcome||eventTurnQueued)return;
+  try{
+    const before=turnState(),result=dropCarriedItem(play,playerInventory,graveyard,level().id,id);
+    play=result.project;playerInventory=result.inventory;notifyPlayEvents(before,result.events);render();toast('Object dropped.');
+  }catch(error){toast(error.message);}
+}
+function throwCanvasObject(id){
+  if(!play||turnOutcome)return;
+  const anchor=level().instances.find(i=>i.id===id),stacked=new Set(level().instances.filter(i=>anchor&&i.x===anchor.x&&i.y===anchor.y).map(i=>i.id));
+  const choices=availableThrows(play,level(),playerInventory).filter(c=>stacked.has(c.instanceId));
+  const choose=choice=>{if(!choice.available){toast('The object must be in the player inventory.');return;}throwing.start(choice);};
+  if(choices.length===1)return choose(choices[0]);
+  if(!choices.length)return toast('This throw is no longer available.');
+  showDialog(modal('Choose a Throw Object action',`<div class="use-action-choices">${choices.map((choice,n)=>`<button data-throw-choice="${n}" ${choice.available?'':'disabled'}>${esc(asset(choice.throwAssetId).name)}<small>${esc(asset(level().instances.find(i=>i.id===choice.instanceId).assetId).name)} / ${esc(asset(choice.assignedId).name)}${choice.available?'':' · required in player inventory'}</small></button>`).join('')}</div>`));
+  $('#dialog-content').querySelectorAll('[data-throw-choice]').forEach(button=>button.onclick=()=>{closeDialog();choose(choices[Number(button.dataset.throwChoice)]);});
+}
 function restoreTurn(){
+  throwing.cancel();
   const frame=clone(turnSequence.frames[turnSequence.cursor]);
+  turnOutcome=frame.outcome||null;
   play=frame.project;playerInventory=frame.inventory;graveyard=frame.graveyard;levelId=frame.levelId;
   selected=null;staged=null;tool='select';connectionStart=null;linkDraft=[];render();
+  const feedback=frame.log.filter(row=>row.message);
+  if(feedback.length)toast(feedback.map(row=>row.message).join(' '));
 }
 function clearTurns(){
+  if(userTestSession && testFlow?.blocked)return;
   if(!play)return;
+  testCompletion='automatic';
+  turnOutcome=null;savedOutcomes.clear();
   saveNote();play=clone(playStart);playerInventory=clone(playInitialState?.inventory||[]);graveyard=clone(playInitialState?.graveyard||[]);
   levelId=playInitialState?.levelId||play.levels[0].id;
   turnSequence=createSequence(turnState());restoreTurn();toast('Turn sequence cleared. Starting layout restored.');
 }
 function advanceTurn(previous=false){
+  if(userTestSession && testFlow?.blocked)return;
   if(!play||!turnSequence)return;
+  if(turnOutcome&&!previous)return;
   saveNote();
   try{turnSequence=previous?previousTurn(turnSequence,turnState()):nextTurn(turnSequence,turnState());restoreTurn();}
   catch(error){toast(error.message);}
@@ -602,12 +759,12 @@ $('#import-turns').onchange=async e=>{
     if(file.size>50*1024*1024)throw Error('Turn sequences must be smaller than 50 MB.');
     const sequence=validateSequence(JSON.parse(await file.text()));
     if(!play||session!==playStart)return;
-    saveNote();turnSequence=sequence;playInitialState=clone(sequence.frames[0]);playStart=clone(sequence.frames[0].project);playStartRevision=null;restoreTurn();fitBoard();toast('Private turn sequence loaded.');
+    saveNote();savedOutcomes.clear();if(sequence.frames[sequence.cursor].outcome)savedOutcomes.add(JSON.stringify([sequence.cursor,sequence.frames[sequence.cursor].outcome]));turnSequence=sequence;playInitialState=clone(sequence.frames[0]);playStart=clone(sequence.frames[0].project);playStartRevision=null;restoreTurn();fitBoard();toast('Private turn sequence loaded.');
   }catch(error){toast(error.message);}
 };
 function turnLog(){
   const frame=turnSequence?.frames[turnSequence.cursor];if(!frame)return;
-  showDialog(modal(`Turn ${turnSequence.cursor} · Resolution log`,`<p>${frame.log.length} behaviours resolved. Counts show objects affected, copies created, or nodes moved.</p><ol class="turn-resolution-log">${frame.log.slice(0,500).map(row=>`<li><strong>${esc(row.assetName)}</strong> · ${behaviourNames[row.type]}${row.triggerType?` / ${behaviourNames[row.triggerType]}`:''}${row.action?` / ${effectActions[row.action]}`:''}<span>${row.count}</span></li>`).join('')||'<li>No active behaviours this turn.</li>'}</ol>${frame.log.length>500?'<p>Showing the first 500 entries. The saved sequence contains the complete log.</p>':''}`));
+  showDialog(modal(`Turn ${turnSequence.cursor} · Resolution log`,`<p>${frame.log.length} behaviours resolved. Counts show objects affected, copies created, or nodes moved.</p><ol class="turn-resolution-log">${frame.log.slice(0,500).map(row=>`<li><strong>${esc(row.assetName)}</strong> · ${behaviourNames[row.type]}${row.triggerType?` / ${behaviourNames[row.triggerType]}`:''}${row.action?` / ${effectActions[row.action]}`:''}<span>${row.count}</span>${row.message?`<small class="turn-feedback">${esc(row.message)}</small>`:''}</li>`).join('')||'<li>No active behaviours this turn.</li>'}</ol>${frame.log.length>500?'<p>Showing the first 500 entries. The saved sequence contains the complete log.</p>':''}`));
 }
 let dialogEditor=null;
 function showDialog(content) { dialogEditor=null;$('#dialog').dataset.deckView='';$('#dialog-content').innerHTML=content; if(!$('#dialog').open)$('#dialog').showModal(); }
@@ -711,7 +868,8 @@ function tokenDialog(existing, kind='token', parentId=null, onSaved=null, initia
   const forbidden=new Set([draft.id,...descendants(project,draft.id).map(a=>a.id)]);
   showDialog(modal(`${existing?'Edit':'Create'} a ${editorLabel()}`,`<form id="token-form"><div class="field"><label for="token-name">Name <span class="muted">· required</span></label><input id="token-name" maxlength="80" required placeholder="A torch, a rule, a possibility…" value="${esc(draft.name)}" autofocus></div>${(isState(draft)?[false]:[false,true]).map(parameter=>`<div class="field-label">${parameter?'Parameters · visual behavior':'Token icons'}</div><div class="icon-picker ${parameter?'parameter-picker':''}">${Object.entries(iconNames).filter(([id])=>parameterIcons.includes(id)===parameter).map(([id,name])=>`<button type="button" data-icon="${id}" class="${draft.icon===id?'active':''}" title="${name}" aria-label="${name}" aria-pressed="${draft.icon===id}">${sprite(id,draft.color)}${parameter?`<span>${name}</span>`:''}</button>`).join('')}</div>`).join('')}<div class="field-label">Icon variant</div><div id="variant-picker" class="variant-picker"></div><div class="field"><label for="token-parent">Nest inside</label><select id="token-parent" ${isState(draft)?'required':''}>${!isState(draft)?'<option value="">Standalone</option>':''}${project.assets.filter(a=>!forbidden.has(a.id)&&(!isState(draft)||!isParameter(a))).map(a=>`<option value="${esc(a.id)}" ${draft.parentId===a.id?'selected':''}>${esc(assetPath(a))}${isState(a)?' (state)':''}</option>`).join('')}</select></div>${isState(draft)?`<label class="check-row"><input id="state-enabled" type="checkbox" ${draft.enabled?'checked':''}> Enabled · show this state’s contents</label>`:''}<div class="field"><label for="token-rule">Rule / description</label><textarea id="token-rule" maxlength="4000" placeholder="What does it do? What can change? The rules are yours to define.">${esc(draft.rule)}</textarea></div><div class="field tag-field"><label for="token-tags">Tags <span class="muted">· reusable definitions</span></label><div id="token-tag-list" class="tags"></div><input id="token-tags" maxlength="60" placeholder="Search tags or create a new one…" autocomplete="off"><div id="tag-options" class="tag-options"></div><div id="inline-tag-editor" hidden></div></div><div class="field"><label>Parameter color</label><div class="color-picker">${['#b8cf96','#edc47c','#d8967f','#8fb8c2','#b2a1c6','#ddddbd'].map(c=>`<button type="button" data-color="${c}" class="${draft.color===c?'active':''}" style="--swatch:${c}" aria-label="Color ${c}"></button>`).join('')}<input id="custom-color" type="color" value="${draft.color}" aria-label="Custom parameter color"></div></div><p id="self-help" ${draft.icon==='self'?'':'hidden'}>Self affects only the token’s occupied cell. Use it to detect stacked objects or apply behaviours to overlaps. Range, direction and wall occlusion do not change its area.</p><div class="field" id="range-field" ${isParameter(draft)&&draft.icon!=='self'?'':'hidden'}><label id="range-name" for="token-range">${draft.icon==='area'?'Radius':draft.icon==='cross'?'Arm length':'Length'} in grid cells</label><div class="range-control"><input type="range" id="token-range" min="1" max="12" value="${draft.range}"><output id="range-value">${draft.range} cells</output></div><small id="range-help">Effect area for overlays and assigned behaviours. Areas use diamond-shaped grid distance; crosses include the origin and extend equally along all four grid axes. Line, cone and rectangle extend forward, excluding the origin. Cones stay centered and use odd widths; saved even cone widths round down. Even rectangle widths include one extra cell on the right. Enable Occluded by Walls to stop the effect at wall tiles.</small></div><div id="parameter-behavior" ${isParameter(draft)?'':'hidden'}><label class="check-row"><input id="token-follow-facing" type="checkbox" ${draft.followTokenFacing?'checked':''}> Follow Token Facing</label><small>Turn this parameter with the parent token’s facing triangle. Its own rotation remains a relative offset.</small><label class="check-row"><input id="token-occlusion" type="checkbox" ${draft.occludedByWalls?'checked':''}> Occluded by Walls</label><small>Wall tiles and cells behind them are hidden. Walls also block diagonal corners.</small><label class="check-row"><input id="token-overlap-enabled" type="checkbox" ${draft.overlapThreshold>0?'checked':''}> Change color when objects overlap</label><div id="overlap-options" ${draft.overlapThreshold>0?'':'hidden'}><div class="field"><label for="token-overlap-mode">Objects that trigger the color</label><select id="token-overlap-mode"><option value="any" ${draft.overlapAssetIds==null&&draft.overlapTagIds==null?'selected':''}>Any object</option><option value="selected" ${draft.overlapAssetIds!=null&&draft.overlapTagIds==null?'selected':''}>Selected objects</option><option value="tags" ${draft.overlapTagIds!=null?'selected':''}>Objects with tags</option></select></div><fieldset id="overlap-objects" ${draft.overlapAssetIds==null?'hidden':''}><legend>Choose library objects</legend>${project.assets.filter(a=>!isState(a)&&!isParameter(a)).map(a=>`<label class="check-row"><input type="checkbox" name="overlap-object" value="${esc(a.id)}" ${draft.overlapAssetIds?.includes(a.id)?'checked':''}> ${esc(assetPath(a))}</label>`).join('')||'<small>Create an object in the library first.</small>'}</fieldset><fieldset id="overlap-tags" ${draft.overlapTagIds==null?'hidden':''}><legend>Match any selected tag</legend>${project.tags.map(t=>`<label class="check-row"><input type="checkbox" name="overlap-tag" value="${esc(t.id)}" ${draft.overlapTagIds?.includes(t.id)?'checked':''}> ${esc(t.name)}</label>`).join('')}</fieldset><div class="field-row"><div class="field"><label for="token-overlap-count">At least X objects</label><input id="token-overlap-count" type="number" min="1" max="1000" value="${draft.overlapThreshold||1}"></div><div class="field"><label for="token-overlap-color">Overlap color</label><input id="token-overlap-color" type="color" value="${draft.overlapColor||'#edc47c'}"></div></div><small>Counts placements of the chosen library objects inside the visible effect, including stacked objects. Select none to disable matching. Excludes the owner and other parameter markers. The whole effect changes color.</small></div></div><div class="field" id="width-field" ${['cone','rectangle'].includes(draft.icon)?'':'hidden'}><label for="token-width">Width in cells (cone: far edge)</label><input id="token-width" type="number" min="1" max="${draft.icon==='cone'?11:12}" step="${draft.icon==='cone'?2:1}" value="${draft.icon==='cone'?2*Math.floor(((draft.width??3)-1)/2)+1:(draft.width??3)}"></div><div id="token-auto-facing-field" ${!isParameter(draft)&&!isState(draft)?'':'hidden'}><label class="check-row"><input id="token-auto-facing" type="checkbox" ${draft.autoFacing?'checked':''}> Auto-facing</label><small>Face the direction moved, including in playtest. Diagonal moves use the longer axis; equal diagonals face horizontally.</small></div><div class="field"><label for="token-direction">Direction (optional)</label><select id="token-direction">${[['','None'],[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.direction??'')===v?'selected':''}>${n}</option>`).join('')}</select><small>Facing is shown by an edge triangle. Rotating facing leaves the icon upright.</small></div><div class="field"><label for="token-rotation">Icon / parameter rotation · relative to parent / placement</label><select id="token-rotation">${[[0,'↑ Up'],[90,'→ Right'],[180,'↓ Down'],[270,'← Left']].map(([v,n])=>`<option value="${v}" ${(draft.rotation||0)===v?'selected':''}>${n}</option>`).join('')}</select><small>Shared definition: changes affect all placements. Placed pieces can also rotate independently.</small></div><div class="callout">A token holds an idea. Nest other tokens inside it to combine their parameters. Rules are descriptions for students to interpret.</div><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit" class="primary">${existing?'Save changes':`Create ${editorLabel()}`}</button></div></form>`));
   const tokenOptions=$('#token-auto-facing-field');
-  tokenOptions.insertAdjacentHTML('beforeend',`<label class="check-row"><input id="token-non-blocking" type="checkbox" ${draft.nonBlocking?'checked':''}> Nodes occupied by this token count as free</label>`);
+  tokenOptions.insertAdjacentHTML('beforeend',`<label class="check-row"><input id="token-user-test-movable" type="checkbox" ${draft.canBeMovedInUserTest?'checked':''}> Can Be Moved in User Test</label><small>Allow manual movement in User Test Mode. Off by default; applies to every placement of this object.</small><label class="check-row"><input id="token-non-blocking" type="checkbox" ${draft.nonBlocking?'checked':''}> Nodes occupied by this token count as free</label>`);
+  $('#parameter-behavior').insertAdjacentHTML('afterbegin',`<div class="field"><label for="token-parameter-layer">Parameter Layer</label><select id="token-parameter-layer">${parameterLayers.map(layer=>`<option value="${layer}" ${parameterLayer(draft)===layer?'selected':''}>${layer}</option>`).join('')}</select><small>Choose which canvas visibility layer contains this parameter. Floor-height changes always occlude parameters; stairs let an effect cross between floors along its line.</small></div>`);
   let parameterIds=project.assets.filter(a=>a.parentId===draft.id&&isParameter(a)).map(a=>a.id);
   const pendingParameters=new Map(), removedParameters=new Set();
   const parameterField=document.createElement('div');parameterField.className='field reusable-parameters';
@@ -794,7 +952,8 @@ function tokenDialog(existing, kind='token', parentId=null, onSaved=null, initia
     if(!inlineTag.hidden){inlineTag.querySelector('[data-tag-save]').click();if(!inlineTag.hidden)return;}
     draft.name=$('#token-name').value.trim();if(!draft.name)return $('#token-name').focus();
     draft.parentId=$('#token-parent').value||null;if(isState(draft))draft.enabled=$('#state-enabled').checked;
-    draft.rule=$('#token-rule').value;draft.tags=draft.tags.filter(id=>tag(id));draft.range=Number($('#token-range').value);draft.width=Number($('#token-width').value);draft.rotation=Number($('#token-rotation').value);draft.direction=$('#token-direction').value===''?null:Number($('#token-direction').value);draft.autoFacing=$('#token-auto-facing').checked;draft.followTokenFacing=$('#token-follow-facing').checked;draft.occludedByWalls=$('#token-occlusion').checked;draft.overlapThreshold=$('#token-overlap-enabled').checked?Number($('#token-overlap-count').value):0;draft.overlapColor=$('#token-overlap-color').value;if($('#token-overlap-mode').value==='tags')draft.overlapTagIds=[...document.querySelectorAll('input[name=overlap-tag]:checked')].map(input=>input.value);else draft.overlapTagIds=null;draft.overlapAssetIds=$('#token-overlap-mode').value==='selected'?[...document.querySelectorAll('input[name=overlap-object]:checked')].map(input=>input.value):null;
+    draft.rule=$('#token-rule').value;draft.tags=draft.tags.filter(id=>tag(id));draft.range=Number($('#token-range').value);draft.width=Number($('#token-width').value);draft.rotation=Number($('#token-rotation').value);draft.direction=$('#token-direction').value===''?null:Number($('#token-direction').value);draft.autoFacing=$('#token-auto-facing').checked;draft.canBeMovedInUserTest=!isParameter(draft)&&!isState(draft)&&$('#token-user-test-movable').checked;draft.followTokenFacing=$('#token-follow-facing').checked;draft.occludedByWalls=$('#token-occlusion').checked;draft.overlapThreshold=$('#token-overlap-enabled').checked?Number($('#token-overlap-count').value):0;draft.overlapColor=$('#token-overlap-color').value;if($('#token-overlap-mode').value==='tags')draft.overlapTagIds=[...document.querySelectorAll('input[name=overlap-tag]:checked')].map(input=>input.value);else draft.overlapTagIds=null;draft.overlapAssetIds=$('#token-overlap-mode').value==='selected'?[...document.querySelectorAll('input[name=overlap-object]:checked')].map(input=>input.value):null;
+    if(isParameter(draft))draft.parameterLayer=$('#token-parameter-layer').value;
     draft.nonBlocking=!isState(draft)&&!isParameter(draft)&&$('#token-non-blocking').checked;
     const action={type:'asset.compose',data:{asset:draft,usageId:uid(),originalUsageId:uid(),removals:[...removedParameters],attachments:[...pendingParameters.keys()].map(id=>({id,usageId:uid(),originalUsageId:uid()}))}};
     try { applyAction(project,action); }catch(error){return toast(error.message);}
@@ -833,7 +992,7 @@ function tagDialog(existing) {
 }
 function guideDialog() {
   showDialog(modal('Small pieces. Big possibilities.',`<p>A virtual tabletop for exploring atomic parameters. Play by hand or assign behaviours that move pieces, apply effects, and react to your actions during private playtests.</p><div class="help-list">${[
-    ['Shape the stage','Select the floor painter (F) to open its sub-panel and choose Elevated, Ground, or Underground. Nodes can be painted on any floor without replacing it. Repainting a floor keeps its nodes; walls and Erase Tiles remove both layers. Adjacent path nodes connect automatically. Use Erase connection (X) or Reconnect nodes (C), then click a line or two adjacent nodes. Hold and drag to paint tiles.'],
+    ['Shape the stage','Select the floor painter (F) to choose Elevated, Ground, Underground, or Stairs. Nodes can be painted on any floor or stairs without replacing it. Repainting keeps its nodes; walls and Erase Tiles remove both layers. Adjacent nodes on the same floor connect automatically. Paint stairs and add path nodes to connect different floor heights. Bare nodes keep their connections to any floor. Use Erase connection (X) or Reconnect nodes (C), then click a line or two adjacent nodes. Hold and drag to paint tiles.'],
     ['Browse your building blocks','Objects shows token hierarchies, including nested states, parameters and tags. Tokens, Parameters and Tags are focused catalogs; All shows every hierarchy and the tag catalog. Use the arrows to collapse branches.'],
     ['Give an idea a token','Use + in the library. Choose a name, sprite, rule, tags and color. AoE and LoS have their own Parameters pool and adjustable cell distances. Tags have a separate editor; search existing tags or create one inside the token editor.'],
     ['Compose a mechanic','Drag Area of effect onto Torch in the library. It becomes a nested parameter. Nested tokens can contain more tokens; drag to the standalone drop zone to detach.'],
@@ -907,8 +1066,16 @@ async function saveProject() {
     return `Saved ${result.filename} to ${result.folder}`;
 }
 
+const levelTransfers=levelTransferUI({getProject:()=>project,getLevelId:()=>level().id,showDialog,modal,closeDialog,dispatch,toast,esc,
+  canImport:()=>{if(play||userTestSession){toast('Return to Edit before importing levels.');return false;}if(serverNeedsRestart||appConfig.levelTransferVersion!==1){toast(serverUpdateMessage);return false;}if(!connected||pending.length||busy||notePending||revision<0){toast('Wait until all changes are saved and the room is connected.');return false;}return true;},
+  imported:id=>{levelId=id;selected=null;staged=null;render();fitBoard();}});
 function filesDialog() {
   showDialog(modal('Your workshop, to keep.',`<p>Changes save automatically on this server. Keep a project backup, or export a connected inventory for Excel and Google Sheets.</p><div class="files-grid"><button id="export-project">↧ Export project<small>Download a readable .json backup</small></button><button id="export-inventory">▦ Export spreadsheet<small>Recipes, challenges and progression · .xlsx</small></button><button id="import-project">↥ Import project<small>Replace this room with a saved project</small></button><button id="example-project">✧ Load example<small>A torch, light, rats, and a guard</small></button><button id="new-project">＋ Clear workshop<small>Start again with an empty library</small></button></div><div class="callout">Room <b>${esc(room)}</b> · Project backups contain the saved design. Spreadsheet exports can also capture your private playtest before you return to Edit.</div>`));
+  const levelButtons=document.createElement('div');levelButtons.className='files-grid level-file-actions';
+  levelButtons.innerHTML='<button id="export-levels">↧ Export levels<small>Choose levels and their required definitions · .levels.json</small></button><button id="import-levels">↥ Import levels<small>Review definitions and copy or replace matching levels</small></button>';
+  $('.files-grid').before(levelButtons);
+  $('#export-levels').onclick=levelTransfers.exportDialog;
+  $('#import-levels').onclick=levelTransfers.importFile;
   $('#export-project').onclick=()=>{
     const blob=new Blob([JSON.stringify(project,null,2)],{type:'application/json'}), url=URL.createObjectURL(blob), a=document.createElement('a');
     a.href=url;a.download=`plague-tale-go-${room}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Project exported.');
@@ -969,14 +1136,14 @@ async function shareDialog() {
 }
 function levelSettings() {
   if(play)return;const l=level();
-  showDialog(modal('Set the scene.',`<form id="level-form"><div class="field"><label for="level-name">Level name</label><input id="level-name" required maxlength="80" value="${esc(l.name)}"></div><div class="field-row"><div class="field"><label for="level-width">Columns · 4–32</label><input type="number" id="level-width" min="4" max="32" value="${l.width}" required></div><div class="field"><label for="level-height">Rows · 4–24</label><input type="number" id="level-height" min="4" max="24" value="${l.height}" required></div></div><p>When making a level smaller, remove any tiles and pieces outside its new bounds first.</p><section id="starting-inventory-editor" class="starting-inventory-editor"></section><p id="level-form-error" class="danger" role="alert" hidden></p><div class="modal-footer"><button type="button" id="duplicate-level">Duplicate level</button><button type="button" class="danger" id="delete-level" ${project.levels.length===1?'disabled':''}>Delete level</button><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save level</button></div></form>`));
+  showDialog(modal('Set the scene.',`<form id="level-form"><div class="field"><label for="level-name">Level name</label><input id="level-name" required maxlength="80" value="${esc(l.name)}"></div><div class="field-row"><div class="field"><label for="level-width">Columns · 4–32</label><input type="number" id="level-width" min="4" max="32" value="${l.width}" required></div><div class="field"><label for="level-height">Rows · 4–24</label><input type="number" id="level-height" min="4" max="24" value="${l.height}" required></div></div><p>When making a level smaller, remove any tiles and pieces outside its new bounds first.</p><div class="field"><label class="check-row"><input id="level-hide-playtest" type="checkbox" ${l.hideFromPlaytest===true?'checked':''} aria-describedby="level-hide-playtest-help"> Hide from Playtest</label><small id="level-hide-playtest-help">Skip this level in the dedicated User Test launcher. It stays available here in the editor and its Playtest modes.</small></div><section id="starting-inventory-editor" class="starting-inventory-editor"></section><p id="level-form-error" class="danger" role="alert" hidden></p><div class="modal-footer"><button type="button" id="duplicate-level">Duplicate level</button><button type="button" class="danger" id="delete-level" ${project.levels.length===1?'disabled':''}>Delete level</button><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save level</button></div></form>`));
   const startingEditor=startingInventoryEditor({root:$('#starting-inventory-editor'),getProject:()=>project,initial:l.startingInventory||[],esc,label:assetPath});
-  $('#level-form').onsubmit=e=>{e.preventDefault();const error=$('#level-form-error');error.hidden=true;error.textContent='';const data={levelId:l.id,name:$('#level-name').value.trim(),width:Number($('#level-width').value),height:Number($('#level-height').value),startingInventory:startingEditor.read()};if(!data.name)return;try{applyAction(project,{type:'level.update',data});}catch(failure){error.textContent=failure.message;error.hidden=false;error.scrollIntoView({block:'nearest'});return;}if(dispatch({type:'level.update',data})===false)return;closeDialog();fitBoard();};
+  $('#level-form').onsubmit=e=>{e.preventDefault();const error=$('#level-form-error');error.hidden=true;error.textContent='';const data={levelId:l.id,name:$('#level-name').value.trim(),width:Number($('#level-width').value),height:Number($('#level-height').value),startingInventory:startingEditor.read(),hideFromPlaytest:$('#level-hide-playtest').checked};if(!data.name)return;try{applyAction(project,{type:'level.update',data});}catch(failure){error.textContent=failure.message;error.hidden=false;error.scrollIntoView({block:'nearest'});return;}if(dispatch({type:'level.update',data})===false)return;closeDialog();fitBoard();};
   watchEditor($('#level-form'),startingEditor.read);
   $('#duplicate-level').onclick=()=>{
     const copy=copyLevel(l);
     // Include the current settings draft in the duplicated level.
-    const data={levelId:copy.id,name:($('#level-name').value.trim()||l.name)+' copy',width:Number($('#level-width').value),height:Number($('#level-height').value),startingInventory:startingEditor.read()};
+    const data={levelId:copy.id,name:($('#level-name').value.trim()||l.name)+' copy',width:Number($('#level-width').value),height:Number($('#level-height').value),startingInventory:startingEditor.read(),hideFromPlaytest:$('#level-hide-playtest').checked};
     data.name=data.name.slice(0,80);
     const error=$('#level-form-error');
     try {
@@ -997,6 +1164,7 @@ function example() {
   const torch=add('Torch','torch','A carried flame. Ask: how does the space around it change?',['Pickable','Light source'],'#edc47c');
   add('Pool of light','area','Rats avoid the lit area. This is a proposed rule; move rats by hand. Try changing the radius from 2 to 1.',['Radius','Safety'],'#edc47c',2,torch);
   const girl=add('Amicia','girl','Move to a connected node. Can carry one pickable token.',['Player'],'#c8957d');
+  p.assets.find(a=>a.id===girl).canBeMovedInUserTest=true;
   const kid=add('Hugo','kid','Follows Amicia. What happens if the two become separated?',['Companion']);
   const rat=add('Rat swarm','rat','Move toward an unlit character after each player move. Students resolve turns manually.',['Threat'],'#b2a1c6');
   const guard=add('Guard','guard','Patrol a path. Rotate to change facing.',['Patrol'],'#8fb8c2');
@@ -1046,12 +1214,15 @@ function connectionNode(key) {
   if(!connectionStart){connectionStart=key;render();return;}
   if(connectionStart===key){connectionStart=null;render();return;}
   if(!adjacentNodes(level(),connectionStart,key))return toast('Choose a node directly beside the first one.');
+  if(tool==='connect'&&!canConnectNodes(level(),connectionStart,key))return toast('Use stairs to connect nodes on different floor types.');
   editConnection(connectionStart,key);
 }
 document.addEventListener('click', e=>{
   if(Date.now()<suppressClickUntil){e.preventDefault();return;}
   if(notePending && e.target.id!=='instance-note') saveNote();
+  const carryBadge=e.target.closest('[data-drop-carried]');if(carryBadge){dropCanvasItem(carryBadge.dataset.dropCarried);return;}
   const useBadge=e.target.closest('[data-use-object]');if(useBadge){useCanvasObject(useBadge.dataset.useObject);return;}
+  const throwBadge=e.target.closest('[data-throw-object]');if(throwBadge){throwCanvasObject(throwBadge.dataset.throwObject);return;}
   const patrolSwatch=e.target.closest('[data-patrol-color]');if(patrolSwatch&&!play){updatePatrol({color:patrolSwatch.dataset.patrolColor});return;}
   const objectPatrolSwatch=e.target.closest('[data-instance-patrol-color]');if(objectPatrolSwatch&&activeInstance()){dispatch({type:'instance.update',data:{levelId:level().id,id:activeInstance().id,patrolColor:objectPatrolSwatch.dataset.instancePatrolColor}});return;}
   const patrolChoice=e.target.closest('[data-patrol]');if(patrolChoice){patrolId=patrolChoice.dataset.patrol;selected=null;staged=null;if(!play)tool='patrol';render();return;}
@@ -1062,9 +1233,9 @@ document.addEventListener('click', e=>{
   if(e.target.closest('#delete-patrol')&&!play){dispatch({type:'patrol.delete',data:{levelId:level().id,id:patrolId}});return;}
   if(e.target.closest('#use-patrol-color')&&activeInstance()&&activePatrol()){dispatch({type:'instance.update',data:{levelId:level().id,id:activeInstance().id,patrolColor:activePatrol().color}});return;}
   if(e.target.closest('#clear-patrol-color')&&activeInstance()){dispatch({type:'instance.update',data:{levelId:level().id,id:activeInstance().id,patrolColor:null}});return;}
-  const quantity=e.target.closest('[data-stack-adjust]');if(quantity&&play){playerInventory=adjustStack(playerInventory,quantity.dataset.stackAdjust,Number(quantity.dataset.delta));renderInventory();return;}
+  const quantity=e.target.closest('[data-stack-adjust]');if(quantity&&play){try{playerInventory=adjustStack(playerInventory,quantity.dataset.stackAdjust,Number(quantity.dataset.delta));render();}catch(error){toast(error.message);}return;}
   const discardGraveyard=e.target.closest('[data-discard-graveyard]');if(discardGraveyard&&play){graveyard=graveyard.filter(i=>i.id!==discardGraveyard.dataset.discardGraveyard);renderInventory(true);return;}
-  const discard=e.target.closest('[data-discard-inventory]');if(discard&&play){playerInventory=playerInventory.filter(i=>i.id!==discard.dataset.discardInventory);renderInventory();return;}
+  const discard=e.target.closest('[data-discard-inventory]');if(discard&&play){playerInventory=playerInventory.filter(i=>i.id!==discard.dataset.discardInventory);render();return;}
   const close=e.target.closest('[data-close]');if(close)return requestCloseDialog();
   const deck=e.target.closest('[data-deck],[data-review-deck]');if(deck)return deckDialog(deck.dataset.deck||deck.dataset.reviewDeck);
   const color=e.target.closest('[data-note-color]');if(color){postItColor=color.dataset.noteColor;staged=null;selected=null;render();return;}
@@ -1105,8 +1276,8 @@ document.addEventListener('click', e=>{
   const floorChoice=e.target.closest('[data-floor-tile]');
   if(floorChoice&&!play){floorTile=floorChoice.dataset.floorTile;tool='floor';staged=null;selected=null;connectionStart=null;linkDraft=[];render();$(`[data-floor-tile="${floorTile}"]`).focus();return;}
   const icon=e.target.closest('[data-tool]');
-  if(icon){if(icon.dataset.tool==='overlays')showAll=!showAll;else{tool=icon.dataset.tool;staged=null;selected=null;connectionStart=null;linkDraft=[];}return render();}
-  const tab=e.target.closest('[data-level]');if(tab){levelId=tab.dataset.level;selected=null;staged=null;connectionStart=null;linkDraft=[];render();fitBoard();return;}
+  if(icon){if(icon.dataset.tool==='overlays')layerMenuOpen=!layerMenuOpen;else{layerMenuOpen=false;tool=icon.dataset.tool;staged=null;selected=null;connectionStart=null;linkDraft=[];}render();if(icon.dataset.tool==='overlays')$('[data-tool="overlays"]').focus();return;}
+  const tab=e.target.closest('[data-level]');if(tab){if(userTestSession || play&&turnOutcome)return;levelId=tab.dataset.level;selected=null;staged=null;connectionStart=null;linkDraft=[];render();fitBoard();return;}
   if(!play&&tool==='link'&&e.target.closest('[data-instance]'))return pickLinkObject(e.target.closest('[data-instance]').dataset.instance);
   if(!play&&['connect','unlink'].includes(tool)){
     const cell=e.target.closest('.cell'), piece=e.target.closest('[data-instance]');
@@ -1125,9 +1296,11 @@ document.addEventListener('click', e=>{
     case 'behaviour-order':case 'inspector-behaviour-order':behaviourTools.order();break;
     case 'set-move-target':if(activeInstance())behaviourTools.target(activeInstance());break;
     case 'next-turn':advanceTurn();break;
+    case 'next-level':nextLevel();break;
     case 'previous-turn':advanceTurn(true);break;
     case 'save-turns':saveTurns();break;
-    case 'load-turns':if(play)$('#import-turns').click();break;
+    case 'load-turns':if(play&&!userTestSession)$('#import-turns').click();break;
+    case 'test-manual-finish':if(userTestSession&&!$('#test-manual-finish').hidden){testCompletion='manual';turnOutcome={type:'levelComplete',levelId:level().id};render();}break;
     case 'clear-turns':clearTurns();break;
     case 'turn-log':turnLog();break;
     case 'library-expand':expandLibrary(!$('#workshop-sidebar').classList.contains('library-expanded'));break;
@@ -1171,13 +1344,31 @@ document.addEventListener('click', e=>{
     case 'add-level':{if(project.levels.length>=30)return toast('This workshop supports up to 30 levels.');const l=blankLevel(uid(),`Level ${project.levels.length+1}`);dispatch({type:'level.add',data:l});levelId=l.id;selected=null;staged=null;render();fitBoard();break;}
     case 'play-mode':{
       if(play)return;if(pending.length)return toast('Wait for changes to save before playtesting.');
+      turnOutcome=null;savedOutcomes.clear();
       playInitialState=createPlaytestState(project,level().id);playerInventory=clone(playInitialState.inventory);graveyard=[];graveyardExpanded=false;inventoryExpanded=playerInventory.length>0;playStartRevision=revision;playStart=clone(project);play=clone(playInitialState.project);levelId=playInitialState.levelId;turnSequence=createSequence(turnState());staged=null;tool='select';selected=null;render();toast('Private playtest ready. Start turn 1 to run behaviours.');break;
     }
-    case 'edit-mode':if(play){saveNote();playerInventory=[];graveyard=[];play=null;playStart=null;playInitialState=null;turnSequence=null;playStartRevision=null;selected=null;if(!project.levels.some(l=>l.id===levelId))levelId=project.levels[0].id;render();toast('Back to editing. Your original level is preserved.');}break;
+    case 'edit-mode':if(userTestSession)return;if(play){saveNote();playerInventory=[];graveyard=[];play=null;playStart=null;playInitialState=null;turnSequence=null;turnOutcome=null;savedOutcomes.clear();playStartRevision=null;selected=null;if(!project.levels.some(l=>l.id===levelId))levelId=project.levels[0].id;render();toast('Back to editing. Your original level is preserved.');}break;
     case 'reset-play':clearTurns();break;
   }
 });
+document.addEventListener('click',e=>{
+  if(layerMenuOpen&&!e.target.closest('.parameter-layer-tool')){
+    layerMenuOpen=false;$('#parameter-layer-menu').hidden=true;$('[data-tool="overlays"]').setAttribute('aria-expanded','false');
+  }
+});
 document.addEventListener('change',e=>{
+  if(e.target.matches('[data-parameter-layer]')){
+    const layer=e.target.dataset.parameterLayer;if(!parameterLayers.includes(layer))return;
+    e.target.checked?visibleParameterLayers.add(layer):visibleParameterLayers.delete(layer);
+    try{localStorage.setItem(parameterLayersPreferenceKey,JSON.stringify([...visibleParameterLayers]));}catch{}
+    render();$(`[data-parameter-layer="${layer}"]`).focus();return;
+  }
+  if(e.target.id==='playtest-mode'){
+    if(!Object.hasOwn(playtestModes,e.target.value))return;
+    if(userTestSession && testFlow?.blocked)return;
+    saveNote();playtestMode=e.target.value;if(userTestSession&&playtestMode==='sandbox')testUsedSandbox=true;render();return;
+  }
+  if(e.target.matches('[data-user-test-movable]')&&!play){dispatch({type:'asset.update',data:{id:e.target.dataset.userTestMovable,canBeMovedInUserTest:e.target.checked}});return;}
   if(e.target.matches('[data-patrol-hidden]')){dispatch({type:'patrol.update',data:{levelId:level().id,id:e.target.dataset.patrolHidden,hidden:!e.target.checked}});return;}
   if(e.target.id==='patrol-color'&&!play){updatePatrol({color:e.target.value});return;}
   if(e.target.id==='patrol-name'&&!play){updatePatrol({name:e.target.value.trim()||activePatrol().name});return;}
@@ -1203,12 +1394,13 @@ $('#import-file').onchange=async e=>{
 };
 document.addEventListener('pointerdown',e=>{
   if(['link','patrol'].includes(tool)&&e.target.closest('#board'))return;
-  if(e.button!==0||$('#dialog').open||e.target.closest('[data-use-object],[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset],[data-attach-behaviour],[data-edit-behaviour-block]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
+  if(e.button!==0||$('#dialog').open||e.target.closest('[data-use-object],[data-drop-carried],[data-throw-object],[data-place],[data-rotate-asset],[data-toggle-state],[data-collapse-asset],[data-attach-behaviour],[data-edit-behaviour-block]')||(!play&&['connect','unlink'].includes(tool)&&e.target.closest('#board')))return;
   if(tool==='postIt'&&e.target.closest('#board'))return;
   const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),blockRow=!play&&e.target.closest('[data-behaviour-block]'),note=e.target.closest('[data-post-it]');
   const inventoryItem=play&&e.target.closest('[data-inventory-item],[data-graveyard-item]');
   if(e.target.closest('[data-discard-inventory],[data-discard-graveyard],[data-stack-adjust]'))return;
   if(!inventoryItem&&!note&&!piece&&!row&&!blockRow&&(!tagRow||play))return;
+  if(piece&&!canManuallyMove(level().instances.find(i=>i.id===piece.dataset.instance)))return;
   e.preventDefault();
   pointerDrag={startX:e.clientX,startY:e.clientY,active:false,payload:inventoryItem?{type:inventoryItem.dataset.graveyardItem?'graveyard':'inventory',id:inventoryItem.dataset.graveyardItem||inventoryItem.dataset.inventoryItem}:note?{type:'postIt',id:note.dataset.postIt,levelId:level().id}:piece?{type:'instance',id:piece.dataset.instance,levelId:level().id}:blockRow?{type:'behaviour',id:blockRow.dataset.behaviourBlock}:tagRow?{type:'tag',id:tagRow.dataset.tag}:{type:'asset',id:row.dataset.asset}};
 });
@@ -1242,6 +1434,7 @@ document.addEventListener('dragstart',e=>{
   const piece=e.target.closest('[data-instance]'),row=e.target.closest('[data-asset]'),tagRow=e.target.closest('[data-tag]'),blockRow=e.target.closest('[data-behaviour-block]');
   const inventoryItem=play&&e.target.closest('[data-inventory-item],[data-graveyard-item]');
   if(inventoryItem)dragPayload={type:inventoryItem.dataset.graveyardItem?'graveyard':'inventory',id:inventoryItem.dataset.graveyardItem||inventoryItem.dataset.inventoryItem};
+  else if(piece&&!canManuallyMove(level().instances.find(i=>i.id===piece.dataset.instance))){e.preventDefault();return;}
   else if(piece)dragPayload={type:'instance',id:piece.dataset.instance,levelId:level().id};
   else if(blockRow&&!play)dragPayload={type:'behaviour',id:blockRow.dataset.behaviourBlock};
   else if(tagRow&&!play)dragPayload={type:'tag',id:tagRow.dataset.tag};
@@ -1288,7 +1481,7 @@ function dropToken(target,payload,x,y){
   if(cell||piece){
     const target=cell?{x:Number(cell.dataset.x),y:Number(cell.dataset.y)}:level().instances.find(i=>i.id===piece.dataset.instance);
     if(['inventory','graveyard'].includes(payload.type)&&play){
-      try{const before=turnState(),fromGraveyard=payload.type==='graveyard',result=releaseItem(play,fromGraveyard?graveyard:playerInventory,level().id,payload.id,{x:target.x,y:target.y},snapToNodes);play=result.project;if(fromGraveyard)graveyard=result.inventory;else playerInventory=result.inventory;selected={type:'instance',id:result.instanceId};if(!fromGraveyard)notifyPlayEvents(before,[{type:'inventoryDropped',levelId:level().id,instanceId:result.instanceId}]);render();}catch(error){toast(error.message);}return;
+      try{const before=turnState(),fromGraveyard=payload.type==='graveyard',result=releaseItem(play,fromGraveyard?graveyard:playerInventory,level().id,payload.id,{x:target.x,y:target.y},snapToNodes);checkPlaytestMovement(play,result.project,playtestMode);play=result.project;if(fromGraveyard)graveyard=result.inventory;else playerInventory=result.inventory;selected={type:'instance',id:result.instanceId};if(!fromGraveyard)notifyPlayEvents(before,[{type:'inventoryDropped',levelId:level().id,instanceId:result.instanceId}]);render();}catch(error){toast(error.message);}return;
     }
     if(payload.type==='asset'&&!play)place(payload.id,target.x,target.y);
     if(payload.type==='instance'&&payload.levelId===level().id){selected={type:'instance',id:payload.id};dispatch({type:'instance.update',data:{levelId:level().id,id:payload.id,x:target.x,y:target.y}});}return;
@@ -1345,6 +1538,7 @@ $('#board').addEventListener('pointerup',finishPaint);
 $('#board').addEventListener('pointercancel',()=>{paint=null;renderBoard();});
 document.addEventListener('keydown',e=>{
   if($('#dialog').open || $('#workshop-step-dialog').open)return;
+  if(e.key==='Escape'&&layerMenuOpen){e.preventDefault();layerMenuOpen=false;render();$('[data-tool="overlays"]').focus();return;}
   const libraryView=e.target.closest('[data-library-tab]');
   if(libraryView&&['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){
     e.preventDefault();const tabs=['objects','atomic'],index=tabs.indexOf(libraryView.dataset.libraryTab);
@@ -1379,8 +1573,26 @@ document.addEventListener('keydown',e=>{
 $('#dialog').addEventListener('click',e=>{if(e.target===$('#dialog')){const r=$('#dialog').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)requestCloseDialog();}});
 window.addEventListener('beforeunload',e=>{if(pending.length||notePending||hasUnsavedEditors()){e.preventDefault();e.returnValue='';}});
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(fitBoard,200);});
-editingTools=manipulation({getProject:currentProject,getLevel:level,getSelected:()=>selected,setSelected:value=>{selected=value;staged=null;tool='select';},dispatch,render,toast,isPlay:()=>!!play,snap:()=>snapToNodes,esc,collectInventory:collectInInventory,openBehaviourOrder:()=>behaviourTools.order()});
+editingTools=manipulation({getProject:currentProject,getLevel:level,getSelected:()=>selected,setSelected:value=>{selected=value;staged=null;tool='select';},dispatch,render,toast,isPlay:()=>!!play,canMove:canManuallyMove,snap:()=>snapToNodes,esc,collectInventory:collectInInventory,openBehaviourOrder:()=>behaviourTools.order()});
 floatingTools=floatingCanvas({getProject:()=>project,getLevel:level,dispatch,edit:postItDialog,uid,esc});
+if (userTestSession) {
+  testFlow = userTestFlow({ endpoint, room,
+    getProfile: () => presence?.getProfile(), react: emotion => presence?.react(emotion),
+    getRun: () => ({ mode: playtestMode, usedSandbox: testUsedSandbox, turns: turnSequence?.cursor || 0, elapsedSeconds: (Date.now() - testLevelStarted) / 1000 }),
+    onLevel: (snapshot, id) => {
+      project=clone(snapshot);authoritative=clone(snapshot);levelId=id;turnOutcome=null;testCompletion='automatic';savedOutcomes.clear();
+      playInitialState=createPlaytestState(snapshot,id);playerInventory=clone(playInitialState.inventory);graveyard=[];
+      inventoryExpanded=playerInventory.length>0;graveyardExpanded=false;playStart=clone(playInitialState.project);play=clone(playStart);
+      turnSequence=createSequence(turnState());selected=null;staged=null;tool='select';testLevelStarted=Date.now();testUsedSandbox=playtestMode==='sandbox';
+      render();requestAnimationFrame(fitBoard);
+    },
+    onComplete: session => {
+      project=clone(session.project);levelId=project.levels.at(-1).id;
+      play=clone(project);turnOutcome=null;render();
+    }
+  });
+}
 render();
 
-initPresence({ endpoint, uid, getView: () => ({ levelId: level().id, play: Boolean(play) }) });
+presence=initPresence({ endpoint, uid, userTest: userTestSession, getView: () => ({ levelId: level().id, play: Boolean(play), finished: testFlow?.complete }) });
+document.body.classList.remove('app-loading');
